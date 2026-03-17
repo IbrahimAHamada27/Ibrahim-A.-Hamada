@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Duck - Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Tajawal:wght@400;500;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Poppins', 'Tajawal', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #ffd700;
+            margin: 0;
+        }
+        .btn {
+            background: #ffd700;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #e6c200;
+        }
+        .btn-danger {
+            background: #ff4d4d;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #e60000;
+        }
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 0.85rem;
+        }
+        .section-box {
+            background: #252525;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: #111;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 5px;
+            font-family: inherit;
+        }
+        .flex-row {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        .flex-row > div {
+            flex: 1;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            color: #ffd700;
+            background: #111;
+        }
+        .corner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #ffd700;
+        }
+        .corner-header h3 {
+            margin: 0;
+            color: #fff;
+        }
+        .item-row:hover {
+            background-color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Admin Dashboard</h1>
+        <div>
+            <a href="index.html" class="btn" style="margin-right: 10px;">View Menu</a>
+            <button class="btn btn-danger" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <!-- Forms Section -->
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- Add Corner Form -->
+        <div class="section-box" style="flex: 1; min-width: 300px;">
+            <h3 style="color:#ffd700; margin-top:0;">Add New Corner</h3>
+            <form id="corner-form" onsubmit="addCorner(event)">
+                <div class="form-group">
+                    <label>English Name (e.g. Duck Espresso Corner)</label>
+                    <input type="text" id="corner-en" required>
+                </div>
+                <div class="form-group">
+                    <label>Arabic Name (e.g. ركن الإسبريسو)</label>
+                    <input type="text" id="corner-ar" dir="rtl" required>
+                </div>
+                <div class="form-group">
+                    <label>Image Filename (e.g. espresso.jpeg)</label>
+                    <input type="text" id="corner-img" placeholder="espresso.jpeg">
+                    <small style="color:#888;">Ensure image is in assets/images/ folder.</small>
+                </div>
+                <button type="submit" class="btn">Add Corner</button>
+            </form>
+        </div>
+
+        <!-- Add Item Form -->
+        <div class="section-box" style="flex: 2; min-width: 400px;">
+            <h3 style="color:#ffd700; margin-top:0;">Add New Item</h3>
+            <form id="item-form" onsubmit="addItem(event)">
+                <div class="form-group">
+                    <label>Select Corner</label>
+                    <select id="item-corner" required>
+                        <option value="">Loading corners...</option>
+                    </select>
+                </div>
+                <div class="flex-row">
+                    <div class="form-group">
+                        <label>English Name</label>
+                        <input type="text" id="item-en" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Arabic Name</label>
+                        <input type="text" id="item-ar" dir="rtl" required>
+                    </div>
+                    <div class="form-group" style="flex: 0.5;">
+                        <label>Price</label>
+                        <input type="text" id="item-price" placeholder="45 / 55" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn">Add Item</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Data Display Section -->
+    <div class="section-box">
+        <h2 style="color:#ffd700; margin-top:0;">Manage Menu</h2>
+        <div id="menu-container">
+            Loading data...
+        </div>
+    </div>
+
+    <script>
+        // Check Authentication
+        const token = localStorage.getItem('adminToken');
+        if (!token) {
+            window.location.href = 'admin.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('adminToken');
+            window.location.href = 'admin.html';
+        }
+
+        const API_BASE = '/api';
+
+        async function fetchData() {
+            try {
+                const res = await fetch(`${API_BASE}/corners`);
+                const corners = await res.json();
+                renderCorners(corners);
+                populateCornerSelect(corners);
+            } catch (err) {
+                console.error("Error fetching data:", err);
+                document.getElementById('menu-container').innerHTML = `<p style="color:red;">Failed to connect to server.</p>`;
+            }
+        }
+
+        function populateCornerSelect(corners) {
+            const select = document.getElementById('item-corner');
+            select.innerHTML = '<option value="">-- Choose Corner --</option>';
+            corners.forEach(c => {
+                select.innerHTML += `<option value="${c.id}">${c.nameEn} / ${c.nameAr}</option>`;
+            });
+        }
+
+        function renderCorners(corners) {
+            const container = document.getElementById('menu-container');
+            container.innerHTML = '';
+
+            corners.forEach(corner => {
+                let itemsHtml = corner.items.map(item => `
+                    <tr class="item-row">
+                        <td>${item.nameEn}</td>
+                        <td dir="rtl">${item.nameAr}</td>
+                        <td>
+                            <input type="text" value="${item.price}" id="price-${item.id}" style="width: 80px; padding: 4px; background:#111; color:#fff; border:1px solid #444;">
+                        </td>
+                        <td>
+                            <button class="btn btn-sm" onclick="updatePrice(${item.id})">Save Price</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                if (corner.items.length === 0) {
+                    itemsHtml = `<tr><td colspan="4" style="text-align:center; color:#888;">No items in this corner.</td></tr>`;
+                }
+
+                container.innerHTML += `
+                    <div style="margin-bottom: 40px;">
+                        <div class="corner-header">
+                            <div>
+                                <h3>${corner.nameEn} <span style="color:#888; font-size:1rem;">| ${corner.nameAr}</span></h3>
+                                <small style="color:#ccc;">Image: ${corner.imageName || 'None'}</small>
+                            </div>
+                            <button class="btn btn-danger btn-sm" onclick="deleteCorner(${corner.id})">Delete Corner</button>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Item (EN)</th>
+                                    <th>Item (AR)</th>
+                                    <th>Price</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            });
+        }
+
+        // --- CRUD Operations ---
+
+        async function addCorner(e) {
+            e.preventDefault();
+            const data = {
+                nameEn: document.getElementById('corner-en').value,
+                nameAr: document.getElementById('corner-ar').value,
+                imageName: document.getElementById('corner-img').value
+            };
+            
+            await fetch(`${API_BASE}/corners`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            document.getElementById('corner-form').reset();
+            fetchData();
+        }
+
+        async function addItem(e) {
+            e.preventDefault();
+            const data = {
+                cornerId: document.getElementById('item-corner').value,
+                nameEn: document.getElementById('item-en').value,
+                nameAr: document.getElementById('item-ar').value,
+                price: document.getElementById('item-price').value
+            };
+            
+            await fetch(`${API_BASE}/items`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            document.getElementById('item-form').reset();
+            fetchData();
+        }
+
+        async function updatePrice(itemId) {
+            const newPrice = document.getElementById(`price-${itemId}`).value;
+            // Fetch current item details first (hacky shortcut to just update price)
+            // Ideally we'd have a PATCH or send full body
+            // Since our backend expects nameEn and nameAr too, we have to pass them or modify backend.
+            // Let's modify backend to ignore undefined or fetch them first:
+            // Since we know the table data, we can grab it from the DOM row:
+            const row = document.getElementById(`price-${itemId}`).closest('tr');
+            const nameEn = row.cells[0].innerText;
+            const nameAr = row.cells[1].innerText;
+
+            await fetch(`${API_BASE}/items/${itemId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ nameEn, nameAr, price: newPrice })
+            });
+            
+            const btn = row.querySelector('.btn-sm');
+            const originalText = btn.innerText;
+            btn.innerText = 'Saved!';
+            btn.style.background = '#4CAF50';
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.style.background = '#ffd700';
+            }, 1500);
+        }
+
+        async function deleteItem(id) {
+            if(confirm('Are you sure you want to delete this item?')) {
+                await fetch(`${API_BASE}/items/${id}`, { method: 'DELETE' });
+                fetchData();
+            }
+        }
+
+        async function deleteCorner(id) {
+            if(confirm('Warning: Deleting a corner will delete all its items. Are you sure?')) {
+                await fetch(`${API_BASE}/corners/${id}`, { method: 'DELETE' });
+                fetchData();
+            }
+        }
+
+        // Initialize display
+        fetchData();
+    </script>
+</body>
+</html>
