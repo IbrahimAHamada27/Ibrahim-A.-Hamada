@@ -1,16 +1,43 @@
+require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Database setup
+// ===================== SECURITY CONFIG =====================
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'IbrahimA.Hamada';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'IbrahimInDuck2006';
+
+// Active sessions (stored in memory — cleared on server restart)
+const activeSessions = new Set();
+
+// Rate limiter: max 10 login attempts per 15 minutes per IP
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// Auth middleware — protects all /api routes except /api/login and /api/corners GET
+function requireAuth(req, res, next) {
+    const token = req.headers['x-auth-token'] || req.query.token;
+    if (!token || !activeSessions.has(token)) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    next();
+}
+
+// ===================== DATABASE =====================
 const db = new sqlite3.Database(path.join(__dirname, 'database.sqlite'));
 db.run('PRAGMA foreign_keys = ON');
 
-// Create tables + migrate sortOrder if missing
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS corners (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,11 +48,9 @@ db.serialize(() => {
         cornerId INTEGER, nameEn TEXT, nameAr TEXT, price TEXT, sortOrder INTEGER DEFAULT 0,
         FOREIGN KEY(cornerId) REFERENCES corners(id) ON DELETE CASCADE
     )`);
-    // Migrate: add sortOrder to existing tables if missing
     db.run(`ALTER TABLE corners ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
     db.run(`ALTER TABLE items ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
 
-    // Auto-seed if empty
     db.get('SELECT COUNT(*) as count FROM corners', (err, row) => {
         if (!err && row.count === 0) {
             console.log('Database is empty. Seeding...');
@@ -52,74 +77,69 @@ function seedDatabase() {
         { imageName: 'playstation.jpeg', nameEn: 'Playstation Corner', nameAr: 'ركن البلايستيشن', items: [['PS5 - Single','بلايستيشن 5 - فردي','80'],['PS5 - Multiplayer','بلايستيشن 5 - جماعي','110'],['PS4 - Single','بلايستيشن 4 - فردي','60'],['PS4 - Multiplayer','بلايستيشن 4 - جماعي','90']] },
     ];
 
-    const insertCorner = db.prepare('INSERT INTO corners (imageName, nameEn, nameAr) VALUES (?, ?, ?)');
-    const insertItem = db.prepare('INSERT INTO items (cornerId, nameEn, nameAr, price) VALUES (?, ?, ?, ?)');
-
-    for (const corner of cornersData) {
-        insertCorner.run(corner.imageName, corner.nameEn, corner.nameAr, function() {
+    const insertCorner = db.prepare('INSERT INTO corners (imageName, nameEn, nameAr, sortOrder) VALUES (?, ?, ?, ?)');
+    const insertItem = db.prepare('INSERT INTO items (cornerId, nameEn, nameAr, price, sortOrder) VALUES (?, ?, ?, ?, ?)');
+    cornersData.forEach((corner, ci) => {
+        insertCorner.run(corner.imageName, corner.nameEn, corner.nameAr, ci, function() {
             const cornerId = this.lastID;
-            for (const item of corner.items) {
-                insertItem.run(cornerId, item[0], item[1], item[2]);
-            }
+            corner.items.forEach((item, ii) => insertItem.run(cornerId, item[0], item[1], item[2], ii));
         });
-    }
+    });
     console.log('Database seeded successfully!');
 }
 
-// Middleware
+// ===================== MIDDLEWARE =====================
 app.use(cors());
 app.use(express.json());
 app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
-// ================= API ENDPOINTS =================
+// ===================== API ENDPOINTS =====================
 
-// 1. Admin Login
-app.post('/api/login', (req, res) => {
+// 1. Admin Login (rate limited)
+app.post('/api/login', loginLimiter, (req, res) => {
     const { username, password } = req.body;
-    if (username === 'IbrahimA.Hamada' && password === 'admin123') {
-        res.json({ success: true, token: 'fake-jwt-token-for-demo' });
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        const token = crypto.randomBytes(32).toString('hex');
+        activeSessions.add(token);
+        res.json({ success: true, token });
     } else {
         res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 });
 
-// 2. Fetch All Corners with Items (sorted by sortOrder)
+// 2. Admin Logout
+app.post('/api/logout', (req, res) => {
+    const token = req.headers['x-auth-token'];
+    if (token) activeSessions.delete(token);
+    res.json({ success: true });
+});
+
+// 3. Fetch All Corners (PUBLIC — no auth needed)
 app.get('/api/corners', (req, res) => {
     db.all('SELECT * FROM corners ORDER BY sortOrder ASC, id ASC', [], (err, corners) => {
         if (err) return res.status(500).json({ error: err.message });
         db.all('SELECT * FROM items ORDER BY sortOrder ASC, id ASC', [], (err, items) => {
             if (err) return res.status(500).json({ error: err.message });
-            const result = corners.map(corner => ({
-                ...corner,
-                items: items.filter(i => i.cornerId === corner.id)
-            }));
-            res.json(result);
+            res.json(corners.map(corner => ({ ...corner, items: items.filter(i => i.cornerId === corner.id) })));
         });
     });
 });
 
-// 2b. Reorder Corners
-app.put('/api/corners/reorder', (req, res) => {
-    const { ids } = req.body; // array of corner IDs in new order
+// ---- Protected routes below ----
+
+// 4. Reorder Corners
+app.put('/api/corners/reorder', requireAuth, (req, res) => {
+    const { ids } = req.body;
     const stmt = db.prepare('UPDATE corners SET sortOrder = ? WHERE id = ?');
     ids.forEach((id, index) => stmt.run(index, id));
     stmt.finalize();
     res.json({ success: true });
 });
 
-// 2c. Reorder Items within a Corner
-app.put('/api/items/reorder', (req, res) => {
-    const { ids } = req.body; // array of item IDs in new order
-    const stmt = db.prepare('UPDATE items SET sortOrder = ? WHERE id = ?');
-    ids.forEach((id, index) => stmt.run(index, id));
-    stmt.finalize();
-    res.json({ success: true });
-});
-
-// 3. Add a New Corner
-app.post('/api/corners', (req, res) => {
+// 5. Add Corner
+app.post('/api/corners', requireAuth, (req, res) => {
     const { imageName, nameEn, nameAr } = req.body;
     db.run('INSERT INTO corners (imageName, nameEn, nameAr) VALUES (?, ?, ?)', [imageName, nameEn, nameAr], function(err) {
         if (err) return res.status(400).json({ error: err.message });
@@ -127,8 +147,8 @@ app.post('/api/corners', (req, res) => {
     });
 });
 
-// 4. Delete a Corner
-app.delete('/api/corners/:id', (req, res) => {
+// 6. Delete Corner
+app.delete('/api/corners/:id', requireAuth, (req, res) => {
     db.run('DELETE FROM items WHERE cornerId = ?', [req.params.id], () => {
         db.run('DELETE FROM corners WHERE id = ?', [req.params.id], function(err) {
             if (err) return res.status(400).json({ error: err.message });
@@ -137,8 +157,17 @@ app.delete('/api/corners/:id', (req, res) => {
     });
 });
 
-// 5. Add a New Item
-app.post('/api/items', (req, res) => {
+// 7. Reorder Items
+app.put('/api/items/reorder', requireAuth, (req, res) => {
+    const { ids } = req.body;
+    const stmt = db.prepare('UPDATE items SET sortOrder = ? WHERE id = ?');
+    ids.forEach((id, index) => stmt.run(index, id));
+    stmt.finalize();
+    res.json({ success: true });
+});
+
+// 8. Add Item
+app.post('/api/items', requireAuth, (req, res) => {
     const { cornerId, nameEn, nameAr, price } = req.body;
     db.run('INSERT INTO items (cornerId, nameEn, nameAr, price) VALUES (?, ?, ?, ?)', [cornerId, nameEn, nameAr, price], function(err) {
         if (err) return res.status(400).json({ error: err.message });
@@ -146,8 +175,8 @@ app.post('/api/items', (req, res) => {
     });
 });
 
-// 6. Update an Item
-app.put('/api/items/:id', (req, res) => {
+// 9. Update Item
+app.put('/api/items/:id', requireAuth, (req, res) => {
     const { nameEn, nameAr, price } = req.body;
     db.run('UPDATE items SET nameEn = ?, nameAr = ?, price = ? WHERE id = ?', [nameEn, nameAr, price, req.params.id], function(err) {
         if (err) return res.status(400).json({ error: err.message });
@@ -155,15 +184,15 @@ app.put('/api/items/:id', (req, res) => {
     });
 });
 
-// 7. Delete an Item
-app.delete('/api/items/:id', (req, res) => {
+// 10. Delete Item
+app.delete('/api/items/:id', requireAuth, (req, res) => {
     db.run('DELETE FROM items WHERE id = ?', [req.params.id], function(err) {
         if (err) return res.status(400).json({ error: err.message });
         res.json({ success: true });
     });
 });
 
-// Serve HTML pages explicitly
+// ===================== HTML ROUTES =====================
 app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 app.get('/admin-dashboard.html', (req, res) => res.sendFile(path.join(__dirname, 'admin-dashboard.html')));
@@ -171,7 +200,4 @@ app.get('/admin-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'adm
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-// Start server
-app.listen(port, () => {
-    console.log(`Coffee Duck Server running at http://localhost:${port}`);
-});
+app.listen(port, () => console.log(`Coffee Duck Server running at http://localhost:${port}`));

@@ -97,10 +97,16 @@
 <script>
     if (!localStorage.getItem('adminToken')) window.location.href = 'admin.html';
 
-    function logout() { localStorage.removeItem('adminToken'); window.location.href = 'admin.html'; }
+    function logout() {
+        fetch(`${API}/logout`, { method: 'POST', headers: { 'x-auth-token': TOKEN } });
+        localStorage.removeItem('adminToken');
+        window.location.href = 'admin.html';
+    }
 
     const API = '/api';
     let cornersData = [];
+    const TOKEN = localStorage.getItem('adminToken');
+    const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
 
     async function fetchData() {
         try {
@@ -172,7 +178,7 @@
                         const ids = [...tbody.querySelectorAll('tr[data-id]')].map(r => parseInt(r.dataset.id));
                         await fetch(`${API}/items/reorder`, {
                             method: 'PUT',
-                            headers: {'Content-Type':'application/json'},
+                            headers: authHeaders,
                             body: JSON.stringify({ ids })
                         });
                     }
@@ -190,7 +196,7 @@
                 const ids = [...container.querySelectorAll('.corner-card[data-id]')].map(c => parseInt(c.dataset.id));
                 await fetch(`${API}/corners/reorder`, {
                     method: 'PUT',
-                    headers: {'Content-Type':'application/json'},
+                    headers: authHeaders,
                     body: JSON.stringify({ ids })
                 });
             }
@@ -201,7 +207,7 @@
         e.preventDefault();
         await fetch(`${API}/corners`, {
             method: 'POST',
-            headers: {'Content-Type':'application/json'},
+            headers: authHeaders,
             body: JSON.stringify({ nameEn: document.getElementById('corner-en').value, nameAr: document.getElementById('corner-ar').value, imageName: document.getElementById('corner-img').value })
         });
         e.target.reset();
@@ -212,7 +218,7 @@
         e.preventDefault();
         await fetch(`${API}/items`, {
             method: 'POST',
-            headers: {'Content-Type':'application/json'},
+            headers: authHeaders,
             body: JSON.stringify({ cornerId: document.getElementById('item-corner').value, nameEn: document.getElementById('item-en').value, nameAr: document.getElementById('item-ar').value, price: document.getElementById('item-price').value })
         });
         e.target.reset();
@@ -224,7 +230,7 @@
         const nameEn = row.cells[1].innerText;
         const nameAr = row.cells[2].innerText;
         const price = document.getElementById(`price-${id}`).value;
-        await fetch(`${API}/items/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({nameEn, nameAr, price}) });
+        await fetch(`${API}/items/${id}`, { method:'PUT', headers: authHeaders, body: JSON.stringify({nameEn, nameAr, price}) });
         const btn = row.querySelector('.btn:not(.btn-danger)');
         btn.textContent = 'Saved!'; btn.style.background = '#4CAF50';
         setTimeout(() => { btn.textContent = 'Save'; btn.style.background = '#ffd700'; }, 1500);
@@ -232,13 +238,13 @@
 
     async function deleteItem(id) {
         if (!confirm('Delete this item?')) return;
-        await fetch(`${API}/items/${id}`, { method:'DELETE' });
+        await fetch(`${API}/items/${id}`, { method:'DELETE', headers: { 'x-auth-token': TOKEN } });
         fetchData();
     }
 
     async function deleteCorner(id) {
         if (!confirm('Delete this corner AND all its items?')) return;
-        await fetch(`${API}/corners/${id}`, { method:'DELETE' });
+        await fetch(`${API}/corners/${id}`, { method:'DELETE', headers: { 'x-auth-token': TOKEN } });
         fetchData();
     }
 
