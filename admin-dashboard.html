@@ -48,9 +48,18 @@
         .item-drag-handle:hover { color:#ffd700; }
 
         .tag { background:rgba(255,215,0,0.1); color:#ffd700; font-size:0.75rem; padding:2px 8px; border-radius:10px; margin-left:5px; }
+
+        /* Toast Notifications */
+        #toast-container { position:fixed; bottom:30px; right:30px; z-index:9999; display:flex; flex-direction:column; gap:10px; }
+        .toast { padding:12px 20px; border-radius:8px; font-size:0.9rem; font-weight:600; min-width:220px;
+            box-shadow:0 4px 15px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
+        .toast.success { background:#1a5c1a; border-left:4px solid #4CAF50; color:#fff; }
+        .toast.error   { background:#5c1a1a; border-left:4px solid #ff4d4d; color:#fff; }
+        @keyframes slideIn { from { opacity:0; transform:translateX(50px); } to { opacity:1; transform:translateX(0); } }
     </style>
 </head>
 <body>
+<div id="toast-container"></div>
 
 <div class="header">
     <h1>⚙ Admin Dashboard</h1>
@@ -97,37 +106,56 @@
 <script>
     if (!localStorage.getItem('adminToken')) window.location.href = 'admin.html';
 
+    const API = '/api';
+    let cornersData = [];
+    const TOKEN = localStorage.getItem('adminToken');
+    const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
+
+    // ===== Toast Notification System =====
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `${type === 'success' ? '✅' : '❌'} ${message}`;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(() => toast.remove(), 500); }, 3000);
+    }
+
+    // ===== Safe API Call Helper =====
+    async function apiCall(url, options = {}) {
+        try {
+            const res = await fetch(url, options);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || data.error || `Server error (${res.status})`);
+            return { ok: true, data };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    }
+
     function logout() {
         fetch(`${API}/logout`, { method: 'POST', headers: { 'x-auth-token': TOKEN } });
         localStorage.removeItem('adminToken');
         window.location.href = 'admin.html';
     }
 
-    const API = '/api';
-    let cornersData = [];
-    const TOKEN = localStorage.getItem('adminToken');
-    const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
-
     async function fetchData() {
-        try {
-            const res = await fetch(`${API}/corners`);
-            cornersData = await res.json();
-            renderAll();
-        } catch(e) {
-            document.getElementById('corners-container').innerHTML = '<p style="color:red;">Cannot connect to server.</p>';
+        const result = await apiCall(`${API}/corners`);
+        if (!result.ok) {
+            document.getElementById('corners-container').innerHTML = `<p style="color:#ff4d4d;">❌ Cannot connect to server: ${result.error}</p>`;
+            return;
         }
+        cornersData = result.data;
+        renderAll();
     }
 
     function renderAll() {
         const container = document.getElementById('corners-container');
         container.innerHTML = '';
-
-        // Populate corner select
         const select = document.getElementById('item-corner');
         select.innerHTML = '<option value="">-- Choose Corner --</option>';
         cornersData.forEach(c => select.innerHTML += `<option value="${c.id}">${c.nameEn}</option>`);
 
-        // Render each corner
         cornersData.forEach(corner => {
             const card = document.createElement('div');
             card.className = 'corner-card';
@@ -140,7 +168,7 @@
                     <td dir="rtl">${item.nameAr}</td>
                     <td><input type="text" value="${item.price}" id="price-${item.id}" style="width:90px;padding:4px;background:#111;color:#fff;border:1px solid #444;border-radius:4px;"></td>
                     <td>
-                        <button class="btn btn-sm" onclick="savePrice(${item.id})">Save</button>
+                        <button class="btn btn-sm" id="savebtn-${item.id}" onclick="savePrice(${item.id})">Save</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.id})">Delete</button>
                     </td>
                 </tr>
@@ -166,89 +194,102 @@
             `;
             container.appendChild(card);
 
-            // Make items sortable
             if (corner.items.length > 1) {
                 new Sortable(document.getElementById(`items-${corner.id}`), {
-                    animation: 150,
-                    handle: '.item-drag-handle',
-                    ghostClass: 'sortable-ghost',
-                    chosenClass: 'sortable-chosen',
+                    animation: 150, handle: '.item-drag-handle',
+                    ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
                     onEnd: async () => {
                         const tbody = document.getElementById(`items-${corner.id}`);
                         const ids = [...tbody.querySelectorAll('tr[data-id]')].map(r => parseInt(r.dataset.id));
-                        await fetch(`${API}/items/reorder`, {
-                            method: 'PUT',
-                            headers: authHeaders,
-                            body: JSON.stringify({ ids })
-                        });
+                        const result = await apiCall(`${API}/items/reorder`, { method:'PUT', headers:authHeaders, body:JSON.stringify({ids}) });
+                        if (!result.ok) showToast('Failed to save order: ' + result.error, 'error');
+                        else showToast('Item order saved!', 'success');
                     }
                 });
             }
         });
 
-        // Make corners sortable
         new Sortable(container, {
-            animation: 200,
-            handle: '.drag-handle',
-            ghostClass: 'sortable-ghost',
-            chosenClass: 'sortable-chosen',
+            animation: 200, handle: '.drag-handle',
+            ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
             onEnd: async () => {
                 const ids = [...container.querySelectorAll('.corner-card[data-id]')].map(c => parseInt(c.dataset.id));
-                await fetch(`${API}/corners/reorder`, {
-                    method: 'PUT',
-                    headers: authHeaders,
-                    body: JSON.stringify({ ids })
-                });
+                const result = await apiCall(`${API}/corners/reorder`, { method:'PUT', headers:authHeaders, body:JSON.stringify({ids}) });
+                if (!result.ok) showToast('Failed to save corner order: ' + result.error, 'error');
+                else showToast('Corner order saved!', 'success');
             }
         });
     }
 
     async function addCorner(e) {
         e.preventDefault();
-        await fetch(`${API}/corners`, {
-            method: 'POST',
-            headers: authHeaders,
+        const result = await apiCall(`${API}/corners`, {
+            method: 'POST', headers: authHeaders,
             body: JSON.stringify({ nameEn: document.getElementById('corner-en').value, nameAr: document.getElementById('corner-ar').value, imageName: document.getElementById('corner-img').value })
         });
+        if (!result.ok) { showToast('Failed to add corner: ' + result.error, 'error'); return; }
+        showToast('Corner added successfully!', 'success');
         e.target.reset();
         fetchData();
     }
 
     async function addItem(e) {
         e.preventDefault();
-        await fetch(`${API}/items`, {
-            method: 'POST',
-            headers: authHeaders,
+        const result = await apiCall(`${API}/items`, {
+            method: 'POST', headers: authHeaders,
             body: JSON.stringify({ cornerId: document.getElementById('item-corner').value, nameEn: document.getElementById('item-en').value, nameAr: document.getElementById('item-ar').value, price: document.getElementById('item-price').value })
         });
+        if (!result.ok) { showToast('Failed to add item: ' + result.error, 'error'); return; }
+        showToast('Item added successfully!', 'success');
         e.target.reset();
         fetchData();
     }
 
     async function savePrice(id) {
-        const row = document.getElementById(`price-${id}`).closest('tr');
-        const nameEn = row.cells[1].innerText;
-        const nameAr = row.cells[2].innerText;
-        const price = document.getElementById(`price-${id}`).value;
-        await fetch(`${API}/items/${id}`, { method:'PUT', headers: authHeaders, body: JSON.stringify({nameEn, nameAr, price}) });
-        const btn = row.querySelector('.btn:not(.btn-danger)');
-        btn.textContent = 'Saved!'; btn.style.background = '#4CAF50';
-        setTimeout(() => { btn.textContent = 'Save'; btn.style.background = '#ffd700'; }, 1500);
+        const btn = document.getElementById(`savebtn-${id}`);
+        const row = btn.closest('tr');
+        const nameEn = row.cells[1].innerText.trim();
+        const nameAr = row.cells[2].innerText.trim();
+        const price = document.getElementById(`price-${id}`).value.trim();
+
+        if (!price) { showToast('Price cannot be empty!', 'error'); return; }
+
+        btn.textContent = 'Saving...'; btn.disabled = true; btn.style.background = '#888';
+
+        const result = await apiCall(`${API}/items/${id}`, {
+            method: 'PUT', headers: authHeaders,
+            body: JSON.stringify({ nameEn, nameAr, price })
+        });
+
+        if (!result.ok) {
+            btn.textContent = 'Save'; btn.disabled = false; btn.style.background = '#ffd700';
+            showToast('❌ Save failed: ' + result.error, 'error');
+        } else {
+            btn.textContent = 'Saved!'; btn.style.background = '#4CAF50';
+            showToast('Price updated successfully!', 'success');
+            setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; btn.style.background = '#ffd700'; }, 2000);
+        }
     }
 
     async function deleteItem(id) {
         if (!confirm('Delete this item?')) return;
-        await fetch(`${API}/items/${id}`, { method:'DELETE', headers: { 'x-auth-token': TOKEN } });
+        const result = await apiCall(`${API}/items/${id}`, { method:'DELETE', headers:{'x-auth-token':TOKEN} });
+        if (!result.ok) { showToast('Failed to delete item: ' + result.error, 'error'); return; }
+        showToast('Item deleted.', 'success');
         fetchData();
     }
 
     async function deleteCorner(id) {
         if (!confirm('Delete this corner AND all its items?')) return;
-        await fetch(`${API}/corners/${id}`, { method:'DELETE', headers: { 'x-auth-token': TOKEN } });
+        const result = await apiCall(`${API}/corners/${id}`, { method:'DELETE', headers:{'x-auth-token':TOKEN} });
+        if (!result.ok) { showToast('Failed to delete corner: ' + result.error, 'error'); return; }
+        showToast('Corner deleted.', 'success');
         fetchData();
     }
 
     fetchData();
 </script>
+
 </body>
 </html>
+
