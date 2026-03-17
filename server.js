@@ -12,24 +12,18 @@ const port = process.env.PORT || 3000;
 // ===================== SECURITY CONFIG =====================
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'IbrahimA.Hamada';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'IbrahimInDuck2006';
+const SECRET_KEY = process.env.SECRET_KEY || 'coffee-duck-super-secret-2025';
 
-// Active sessions (stored in memory — cleared on server restart)
-const activeSessions = new Set();
+// Generate a stable HMAC token from credentials — survives server restarts
+function generateToken(username) {
+    return crypto.createHmac('sha256', SECRET_KEY).update(username + ADMIN_PASSWORD).digest('hex');
+}
 
-// Rate limiter: max 10 login attempts per 15 minutes per IP
-const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-// Auth middleware — protects all /api routes except /api/login and /api/corners GET
+// Auth middleware — verifies HMAC token without any stored state
 function requireAuth(req, res, next) {
-    const token = req.headers['x-auth-token'] || req.query.token;
-    if (!token || !activeSessions.has(token)) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const token = req.headers['x-auth-token'];
+    if (!token || token !== generateToken(ADMIN_USERNAME)) {
+        return res.status(401).json({ success: false, message: 'Unauthorized — please log in again' });
     }
     next();
 }
@@ -95,24 +89,35 @@ app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
+// Rate limiter for login
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // ===================== API ENDPOINTS =====================
 
 // 1. Admin Login (rate limited)
 app.post('/api/login', loginLimiter, (req, res) => {
     const { username, password } = req.body;
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        const token = crypto.randomBytes(32).toString('hex');
-        activeSessions.add(token);
+        const token = generateToken(username);
         res.json({ success: true, token });
     } else {
         res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 });
 
-// 2. Admin Logout
+// 1b. Verify token is still valid
+app.get('/api/verify', requireAuth, (req, res) => {
+    res.json({ success: true });
+});
+
+// 2. Admin Logout (stateless — just clear client-side)
 app.post('/api/logout', (req, res) => {
-    const token = req.headers['x-auth-token'];
-    if (token) activeSessions.delete(token);
     res.json({ success: true });
 });
 

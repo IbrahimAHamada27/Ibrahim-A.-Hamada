@@ -104,12 +104,18 @@
 </div>
 
 <script>
-    if (!localStorage.getItem('adminToken')) window.location.href = 'admin.html';
-
     const API = '/api';
     let cornersData = [];
     const TOKEN = localStorage.getItem('adminToken');
     const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
+
+    // Verify token on load — redirect to login if invalid
+    (async () => {
+        if (!TOKEN) { window.location.href = 'admin.html'; return; }
+        const res = await fetch(`${API}/verify`, { headers: { 'x-auth-token': TOKEN } });
+        if (!res.ok) { localStorage.removeItem('adminToken'); window.location.href = 'admin.html'; }
+    })();
+
 
     // ===== Toast Notification System =====
     function showToast(message, type = 'success') {
