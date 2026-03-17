@@ -10,17 +10,20 @@ const port = process.env.PORT || 3000;
 const db = new sqlite3.Database(path.join(__dirname, 'database.sqlite'));
 db.run('PRAGMA foreign_keys = ON');
 
-// Create tables
+// Create tables + migrate sortOrder if missing
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS corners (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        imageName TEXT, nameEn TEXT, nameAr TEXT
+        imageName TEXT, nameEn TEXT, nameAr TEXT, sortOrder INTEGER DEFAULT 0
     )`);
     db.run(`CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cornerId INTEGER, nameEn TEXT, nameAr TEXT, price TEXT,
+        cornerId INTEGER, nameEn TEXT, nameAr TEXT, price TEXT, sortOrder INTEGER DEFAULT 0,
         FOREIGN KEY(cornerId) REFERENCES corners(id) ON DELETE CASCADE
     )`);
+    // Migrate: add sortOrder to existing tables if missing
+    db.run(`ALTER TABLE corners ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE items ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
 
     // Auto-seed if empty
     db.get('SELECT COUNT(*) as count FROM corners', (err, row) => {
@@ -82,11 +85,11 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// 2. Fetch All Corners with Items
+// 2. Fetch All Corners with Items (sorted by sortOrder)
 app.get('/api/corners', (req, res) => {
-    db.all('SELECT * FROM corners', [], (err, corners) => {
+    db.all('SELECT * FROM corners ORDER BY sortOrder ASC, id ASC', [], (err, corners) => {
         if (err) return res.status(500).json({ error: err.message });
-        db.all('SELECT * FROM items', [], (err, items) => {
+        db.all('SELECT * FROM items ORDER BY sortOrder ASC, id ASC', [], (err, items) => {
             if (err) return res.status(500).json({ error: err.message });
             const result = corners.map(corner => ({
                 ...corner,
@@ -95,6 +98,24 @@ app.get('/api/corners', (req, res) => {
             res.json(result);
         });
     });
+});
+
+// 2b. Reorder Corners
+app.put('/api/corners/reorder', (req, res) => {
+    const { ids } = req.body; // array of corner IDs in new order
+    const stmt = db.prepare('UPDATE corners SET sortOrder = ? WHERE id = ?');
+    ids.forEach((id, index) => stmt.run(index, id));
+    stmt.finalize();
+    res.json({ success: true });
+});
+
+// 2c. Reorder Items within a Corner
+app.put('/api/items/reorder', (req, res) => {
+    const { ids } = req.body; // array of item IDs in new order
+    const stmt = db.prepare('UPDATE items SET sortOrder = ? WHERE id = ?');
+    ids.forEach((id, index) => stmt.run(index, id));
+    stmt.finalize();
+    res.json({ success: true });
 });
 
 // 3. Add a New Corner
