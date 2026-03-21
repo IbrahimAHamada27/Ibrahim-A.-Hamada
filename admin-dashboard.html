@@ -190,6 +190,18 @@
                 <button class="btn btn-sm report-period-btn" style="background:#333;color:#fff;" data-period="weekly" onclick="loadReport('weekly',this)">This Week</button>
                 <button class="btn btn-sm report-period-btn" style="background:#333;color:#fff;" data-period="monthly" onclick="loadReport('monthly',this)">This Month</button>
                 <button class="btn btn-sm report-period-btn" style="background:#333;color:#fff;" data-period="annual" onclick="loadReport('annual',this)">This Year</button>
+                <div style="width:1px;height:24px;background:#555;margin:0 4px;"></div>
+                <select id="report-hours" style="padding:4px 8px;border-radius:4px;background:#222;color:#fff;border:1px solid #444;font-family:inherit;font-size:0.85rem;" onchange="loadReport()">
+                    <option value="">By Calendar Day</option>
+                    <option value="1">Last 1 Hour</option>
+                    <option value="4">Last 4 Hours</option>
+                    <option value="8">Last 8 Hours</option>
+                    <option value="12">Last 12 Hours</option>
+                    <option value="24">Last 24 Hours</option>
+                </select>
+                <select id="report-cashier" style="padding:4px 8px;border-radius:4px;background:#222;color:#fff;border:1px solid #444;font-family:inherit;font-size:0.85rem;" onchange="loadReport()">
+                    <option value="">All Cashiers (الكل)</option>
+                </select>
             </div>
         </div>
     </div>
@@ -574,18 +586,41 @@
         `).join('') || `<tr><td colspan="8" style="text-align:center; color:#aaa;">No active orders</td></tr>`;
     }
 
+    let currentReportPeriod = 'daily';
+    let cashiersLoadedForReport = false;
+
     async function loadReport(period, btnEl) {
-        // Update active button
-        document.querySelectorAll('.report-period-btn').forEach(b => { b.style.background='#333'; b.style.color='#fff'; });
-        if (btnEl) { btnEl.style.background='#ffd700'; btnEl.style.color='#000'; }
+        if (period) currentReportPeriod = period;
+
+        if (!cashiersLoadedForReport) {
+            cashiersLoadedForReport = true;
+            try {
+                const r = await apiCall(`${API}/users`, {headers:authHeaders});
+                if (r.ok && r.data) {
+                    const sel = document.getElementById('report-cashier');
+                    const val = sel.value;
+                    sel.innerHTML = '<option value="">All Cashiers (الكل)</option>' + 
+                        r.data.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+                    sel.value = val;
+                }
+            } catch(e){}
+        }
+
+        if (btnEl) {
+            document.querySelectorAll('.report-period-btn').forEach(b => { b.style.background='#333'; b.style.color='#fff'; });
+            btnEl.style.background='#ffd700'; btnEl.style.color='#000';
+        }
+
+        const hours = document.getElementById('report-hours')?.value || '';
+        const cashierId = document.getElementById('report-cashier')?.value || '';
 
         const periodLabels = { daily:'Today', weekly:'This Week', monthly:'This Month', annual:'This Year' };
 
         document.getElementById('report-summary-cards').innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
         document.getElementById('report-cashier-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
-        document.getElementById('report-orders-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+        document.getElementById('report-orders-tbody').innerHTML = '<tr><td colspan="9" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
 
-        const res = await apiCall(`${API}/reports?period=${period}`, { headers: authHeaders });
+        const res = await apiCall(`${API}/reports?period=${currentReportPeriod}&hours=${hours}&cashier_id=${cashierId}`, { headers: authHeaders });
         if (!res.ok) {
             document.getElementById('report-summary-cards').innerHTML = `<p style="color:#ff4d4d;">❌ ${res.error}</p>`;
             return;

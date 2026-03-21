@@ -915,6 +915,10 @@
                 <label style="display:block;color:#ccc;margin-bottom:5px;font-size:0.9rem;">Amount in Drawer (EGP)</label>
                 <input type="number" id="handover-amount" placeholder="0.00" min="0" step="1" style="width:100%;padding:12px;background:#111;color:#fff;border:1px solid #444;border-radius:6px;font-size:1.1rem;box-sizing:border-box;">
             </div>
+            <div id="handover-comment-container" style="margin-bottom:20px; display:none;">
+                <label style="display:block;color:#ff4d4d;margin-bottom:5px;font-size:0.85rem;font-weight:bold;"><i class="fas fa-exclamation-circle"></i> Shortage detected. Mandatory Reason:</label>
+                <input type="text" id="handover-comment" placeholder="برجاء توضيح سبب العجز..." style="width:100%;padding:10px;background:#2a1111;color:#ffcccc;border:1px solid #ff4d4d;border-radius:6px;font-size:0.95rem;box-sizing:border-box;">
+            </div>
             <button style="width:100%;padding:12px;background:#4CAF50;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:bold;cursor:pointer;" onclick="submitHandover()"><i class="fas fa-check"></i> Complete Handover</button>
         </div>
     </div>
@@ -1648,19 +1652,55 @@ function toggleCartDrawerOpen(open) {
 // ──────────────────────────────
 // HANDOVER
 // ──────────────────────────────
-function openHandover() {
+let expectedCash = 0;
+
+async function openHandover() {
     document.getElementById('handover-amount').value = '';
+    document.getElementById('handover-comment-container').style.display = 'none';
+    document.getElementById('handover-comment').value = '';
+    
+    try {
+        const res = await fetch(`${API}/cashier/stats`, { headers: authH() });
+        const d = await res.json();
+        if(d.success) {
+            expectedCash = d.stats.cashSales + d.stats.cashIn - d.stats.cashOut;
+        }
+    } catch(e) {}
+    
     openOv('ov-handover');
     setTimeout(()=>document.getElementById('handover-amount').focus(), 150);
 }
+
 async function submitHandover() {
     const amt = parseFloat(document.getElementById('handover-amount').value);
     if(isNaN(amt) || amt < 0) { toast('Enter a valid amount','err'); return; }
     
+    const cmtContainer = document.getElementById('handover-comment-container');
+    const cmtInput = document.getElementById('handover-comment');
+    
+    // Discrepancy Check
+    if (amt < expectedCash) {
+        if (cmtContainer.style.display === 'none') {
+            cmtContainer.style.display = 'block';
+            toast('Shortage detected! Please provide a reason.', 'err');
+            setTimeout(() => cmtInput.focus(), 100);
+            return;
+        } else if (!cmtInput.value.trim()) {
+            toast('A reason for the shortage is mandatory', 'err');
+            cmtInput.focus();
+            return;
+        }
+    }
+    
+    let dbReason = 'Handover Cash to Manager (تسليم عهدة)';
+    if (cmtInput.value.trim()) {
+        dbReason += ` - Shortage Reason: ${cmtInput.value.trim()}`;
+    }
+    
     try {
         const res = await fetch(`${API}/cash-movement`, {
             method: 'POST', headers: authH(),
-            body: JSON.stringify({ type: 'out', amount: amt, reason: 'Handover Cash to Manager (تسليم عهدة)' })
+            body: JSON.stringify({ type: 'out', amount: amt, reason: dbReason })
         });
         const d = await res.json();
         if(res.ok) {

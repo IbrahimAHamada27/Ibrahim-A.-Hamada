@@ -383,15 +383,25 @@ app.put('/api/orders/:id/status', requireRoles(['admin', 'cashier']), (req, res)
 // Reports endpoint — period: daily | weekly | monthly | annual (Shiftless)
 app.get('/api/reports', requireRoles(['admin']), (req, res) => {
     const period = req.query.period || 'daily';
+    const customHours = parseInt(req.query.hours);
+    const cashierId = parseInt(req.query.cashier_id);
+
     let dateFilter;
-    switch(period) {
-        case 'weekly':  dateFilter = "datetime('now', '-7 days')"; break;
-        case 'monthly': dateFilter = "datetime('now', '-1 month')"; break;
-        case 'annual':  dateFilter = "datetime('now', '-1 year')"; break;
-        default:        dateFilter = "datetime('now', 'start of day')";
+    if (customHours && !isNaN(customHours)) {
+        dateFilter = `datetime('now', '-${customHours} hours')`;
+    } else {
+        switch(period) {
+            case 'weekly':  dateFilter = "datetime('now', '-7 days')"; break;
+            case 'monthly': dateFilter = "datetime('now', '-1 month')"; break;
+            case 'annual':  dateFilter = "datetime('now', '-1 year')"; break;
+            default:        dateFilter = "datetime('now', 'start of day')";
+        }
     }
 
-    const baseWhere = `WHERE status = 'paid' AND created_at >= ${dateFilter}`;
+    let baseWhere = `WHERE status = 'paid' AND created_at >= ${dateFilter}`;
+    if (cashierId && !isNaN(cashierId)) {
+        baseWhere += ` AND cashier_id = ${cashierId}`;
+    }
 
     db.get(`SELECT COUNT(*) as totalOrders, COALESCE(SUM(total),0) as totalSales,
             COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
@@ -414,7 +424,12 @@ app.get('/api/reports', requireRoles(['admin']), (req, res) => {
                     ${baseWhere} GROUP BY o.id ORDER BY o.id DESC LIMIT 200`, [], (err, orders) => {
                 if (err) return res.status(500).json({ error: err.message });
 
-                db.all(`SELECT * FROM cash_movements WHERE created_at >= ${dateFilter} ORDER BY id DESC`, [], (err, movements) => {
+                let movWhere = `WHERE created_at >= ${dateFilter}`;
+                if (cashierId && !isNaN(cashierId)) {
+                    movWhere += ` AND cashier_id = ${cashierId}`;
+                }
+
+                db.all(`SELECT * FROM cash_movements ${movWhere} ORDER BY id DESC`, [], (err, movements) => {
                     if (err) return res.status(500).json({ error: err.message });
                     const totalIn = movements.filter(m => m.type === 'in').reduce((s, m) => s + m.amount, 0);
                     const totalOut = movements.filter(m => m.type === 'out').reduce((s, m) => s + m.amount, 0);
@@ -452,7 +467,17 @@ app.get('/api/cashier/stats', requireRoles(['admin', 'cashier']), (req, res) => 
             FROM orders WHERE cashier_id = ? AND created_at >= ${startTime}`,
             [cashierId], (err, stats) => {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, stats });
+            
+            db.get(`SELECT 
+                COALESCE(SUM(CASE WHEN type='in' THEN amount ELSE 0 END),0) as cashIn,
+                COALESCE(SUM(CASE WHEN type='out' AND reason NOT LIKE '%تسليم عهدة%' THEN amount ELSE 0 END),0) as cashOut
+                FROM cash_movements WHERE cashier_id = ? AND created_at >= ${startTime}`,
+                [cashierId], (err, movStats) => {
+                if (err) return res.status(500).json({ error: err.message });
+                stats.cashIn = movStats.cashIn;
+                stats.cashOut = movStats.cashOut;
+                res.json({ success: true, stats });
+            });
         });
     });
 });
