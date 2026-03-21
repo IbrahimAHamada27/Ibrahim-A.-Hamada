@@ -203,6 +203,13 @@
         }
         .btn-void:hover { background: rgba(255,68,68,0.2); }
 
+        .cart-items-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
         .cart-items {
             flex: 1;
             overflow-y: auto;
@@ -734,7 +741,6 @@
         <div class="receipt-meta">Order # <span id="r-order-num">—</span></div>
         <div class="receipt-meta">Date <span id="r-date">—</span></div>
         <div class="receipt-meta">Cashier <span id="r-cashier">—</span></div>
-        <div class="receipt-meta">Shift # <span id="r-shift">—</span></div>
         <hr class="receipt-divider">
         <table class="receipt-items">
             <thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
@@ -744,6 +750,7 @@
         <div class="receipt-totals">
             <div class="receipt-tot-row"><span>Subtotal</span><span id="r-subtotal">—</span></div>
             <div class="receipt-tot-row discount" id="r-discount-row" style="display:none"><span>Discount</span><span id="r-discount">—</span></div>
+            <div class="receipt-tot-row"><span>Service (12%)</span><span id="r-service">—</span></div>
             <div class="receipt-tot-row grand"><span>TOTAL</span><span id="r-total">—</span></div>
         </div>
         <div class="receipt-method" id="r-method">—</div>
@@ -806,6 +813,7 @@
         <div class="icon-btn" title="Orders History" onclick="openOrders()"><i class="fas fa-receipt"></i></div>
         <div class="icon-btn" title="Add Cash" onclick="openCashModal('in')"><i class="fas fa-money-bill-wave"></i></div>
         <div class="icon-btn" title="Remove Cash" onclick="openCashModal('out')"><i class="fas fa-hand-holding-usd"></i></div>
+        <div class="icon-btn" title="Handover Cash" onclick="openHandover()"><i class="fas fa-cash-register"></i></div>
         <div class="icon-btn" title="Logout" onclick="logout()"><i class="fas fa-power-off"></i></div>
     </header>
 
@@ -820,7 +828,7 @@
     </div>
 
     <!-- Cart Panel / Checkout -->
-    <div class="cart-panel" id="cart-panel">
+    <div class="cart-area" id="cart-panel">
         <div style="background:#111; padding:8px; display:flex; gap:8px; align-items:center; overflow-x:auto;" id="order-tabs">
             <!-- Rendered by JS -->
         </div>
@@ -838,10 +846,10 @@
             </button>
         </div>
 
-        <div class="cart-header">
-            <h2>Current Order <span>(<span id="cart-count">0</span> items)</span></h2>
+        <div class="cart-head">
+            <h2>Current Order <div class="cart-count" id="cart-count">0</div></h2>
             <div class="cart-actions">
-                <button class="btn-icon" onclick="toggleCartDrawerOpen(false)"><i class="fas fa-times"></i></button>
+                <button class="btn-icon" onclick="toggleCartDrawerOpen(false)" style="background:none;border:none;color:#fff;font-size:1.2rem;cursor:pointer;display:var(--mobile-close-display, none);"><i class="fas fa-times"></i></button>
             </div>
         </div>
 
@@ -875,6 +883,10 @@
                     <span>Discount</span>
                     <span id="discount-val">— 0.00</span>
                 </div>
+                <div class="tot-row" style="color:var(--gold);">
+                    <span>Service (12%)</span>
+                    <span id="service-val">0.00 EGP</span>
+                </div>
                 <div class="tot-row grand">
                     <span>Total</span>
                     <span id="grand-total">0.00</span>
@@ -889,6 +901,24 @@
 </div>
 
 <!-- ══════ MODALS ══════ -->
+
+<!-- Handover Modal -->
+<div class="overlay" id="ov-handover">
+    <div class="modal" style="max-width:380px;">
+        <div class="modal-head">
+            <h3>Handover Drawer (تسليم وردية)</h3>
+            <button class="modal-close" onclick="closeOv('ov-handover')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+            <p style="color:#aaa;font-size:0.9rem;margin-bottom:15px;line-height:1.4;">Enter the exact amount of cash in your drawer to handover to the manager.</p>
+            <div style="margin-bottom:20px;">
+                <label style="display:block;color:#ccc;margin-bottom:5px;font-size:0.9rem;">Amount in Drawer (EGP)</label>
+                <input type="number" id="handover-amount" placeholder="0.00" min="0" step="1" style="width:100%;padding:12px;background:#111;color:#fff;border:1px solid #444;border-radius:6px;font-size:1.1rem;box-sizing:border-box;">
+            </div>
+            <button style="width:100%;padding:12px;background:#4CAF50;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:bold;cursor:pointer;" onclick="submitHandover()"><i class="fas fa-check"></i> Complete Handover</button>
+        </div>
+    </div>
+</div>
 
 <!-- Price Select -->
 <div class="overlay" id="ov-price">
@@ -1271,9 +1301,8 @@ function addFromSize(id, name, p) {
 
 function addToCart(id, name, price) {
     const cOrder = activeOrders[activeIdx];
-    const exist = cOrder.cart.find(c=>c.item_id===id && c.name===name);
-    if (exist) { exist.qty++; }
-    else { cOrder.cart.push({ item_id:id, name, price, qty:1, notes:'' }); }
+    // Always push a new item so each cup can have its own note
+    cOrder.cart.push({ item_id:id, name, price, qty:1, notes:'' });
     renderCart();
     // On tablet open cart drawer
     if(window.innerWidth<=768 && !cartOpen) toggleCartDrawerOpen(true);
@@ -1309,10 +1338,12 @@ function renderCart() {
     const count = cOrder.cart.reduce((s,c)=>s+c.qty,0);
     const subtotal = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
     if(cOrder.discount > subtotal) cOrder.discount = subtotal;
-    const total = subtotal - cOrder.discount;
+    const service = subtotal * 0.12;
+    const total = subtotal + service - cOrder.discount;
 
     document.getElementById('cart-count').innerText = count;
     document.getElementById('subtotal').innerText = subtotal.toFixed(2)+' EGP';
+    document.getElementById('service-val').innerText = service.toFixed(2)+' EGP';
     document.getElementById('grand-total').innerText = total.toFixed(2)+' EGP';
 
     if(cOrder.discount>0) {
@@ -1328,11 +1359,11 @@ function renderCart() {
 
     if(cOrder.cart.length===0) {
         container.innerHTML = '';
-        container.appendChild(empty);
+        empty.style.display = 'block';
         return;
     }
 
-    if(empty.parentNode === container) container.removeChild(empty);
+    empty.style.display = 'none';
 
     container.innerHTML = cOrder.cart.map((item,i)=>`
         <div class="cart-item">
@@ -1442,7 +1473,8 @@ function openPayment() {
     const cOrder = activeOrders[activeIdx];
     if (cOrder.cart.length===0) return;
     const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
-    const total = sub - cOrder.discount;
+    const service = sub * 0.12;
+    const total = sub + service - cOrder.discount;
     document.getElementById('pay-due').innerText = total.toFixed(2)+' EGP';
     document.getElementById('received').value='';
     document.getElementById('change-val').innerText='0.00 EGP';
@@ -1486,7 +1518,8 @@ function calcChange() {
 async function confirmPay() {
     const cOrder = activeOrders[activeIdx];
     const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
-    const total = sub - cOrder.discount;
+    const service = sub * 0.12;
+    const total = sub + service - cOrder.discount;
 
     if(payMethod==='Cash') {
         const btn = document.getElementById('btn-confirm');
@@ -1516,15 +1549,16 @@ function showReceipt(snap) {
     localStorage.setItem('duckOrderNum', receiptOrderCounter);
 
     const sub = snap.items.reduce((s,c)=>s+c.price*c.qty, 0);
-    const total = sub - snap.discount;
+    const service = sub * 0.12;
+    const total = sub + service - snap.discount;
     const now = new Date();
     const dateStr = now.toLocaleDateString('ar-EG') + ' — ' + now.toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
 
     document.getElementById('r-order-num').innerText = receiptOrderCounter;
     document.getElementById('r-date').innerText = dateStr;
     document.getElementById('r-cashier').innerText = snap.cashier;
-    document.getElementById('r-shift').innerText = snap.shift;
     document.getElementById('r-subtotal').innerText = sub.toFixed(2) + ' EGP';
+    document.getElementById('r-service').innerText = service.toFixed(2) + ' EGP';
     document.getElementById('r-total').innerText = total.toFixed(2) + ' EGP';
     document.getElementById('r-method').innerText = '💳 ' + (snap.method === 'Cash' ? 'كاش 💵' : 'كارت 💳');
 
@@ -1560,11 +1594,12 @@ function printReceipt() {
 async function submitOrder(status, method=null) {
     const cOrder = activeOrders[activeIdx];
     const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
-    const total = sub - cOrder.discount;
+    const service = sub * 0.12;
+    const total = sub + service - cOrder.discount;
 
     const payload = {
         status, total, payment_method: method, order_type: cOrder.type,
-        discount_amount: cOrder.discount, notes: cOrder.meta, items: cOrder.cart
+        discount_amount: cOrder.discount, service_charge: service, notes: cOrder.meta, items: cOrder.cart
     };
 
     try {
@@ -1608,6 +1643,32 @@ function toggleCartDrawer() {
 function toggleCartDrawerOpen(open) {
     cartOpen = open;
     document.getElementById('cart-area').classList.toggle('open', open);
+}
+
+// ──────────────────────────────
+// HANDOVER
+// ──────────────────────────────
+function openHandover() {
+    document.getElementById('handover-amount').value = '';
+    openOv('ov-handover');
+    setTimeout(()=>document.getElementById('handover-amount').focus(), 150);
+}
+async function submitHandover() {
+    const amt = parseFloat(document.getElementById('handover-amount').value);
+    if(isNaN(amt) || amt < 0) { toast('Enter a valid amount','err'); return; }
+    
+    try {
+        const res = await fetch(`${API}/cash-movement`, {
+            method: 'POST', headers: authH(),
+            body: JSON.stringify({ type: 'out', amount: amt, reason: 'Handover Cash to Manager (تسليم عهدة)' })
+        });
+        const d = await res.json();
+        if(res.ok) {
+            closeOv('ov-handover');
+            toast('Handover completed! Logging out...');
+            setTimeout(() => logout(), 2500);
+        } else { toast(d.error||'Error','err'); }
+    } catch { toast('Connection failed','err'); }
 }
 
 // ──────────────────────────────

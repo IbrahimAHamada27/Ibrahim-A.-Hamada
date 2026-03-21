@@ -1,0 +1,60 @@
+node : 
+C:\Users\Ibrahim A. Ha
+mada\Downloads\coffee-
+duck-menu-main\server.
+js:449
+At line:1 char:1
++ node server.js 2>&1 
+| Out-File -Encoding 
+ASCII out.txt
++ ~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (C:\Users\I   
+ brahi...n\server.    
+js:449:String) []    
+, RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+app.listen(port, () 
+=> 
+console.log(\`Coffee 
+Duck Server running 
+at http://localhost:\$
+{port}\`));
+                      
+             ^
+
+SyntaxError: Invalid 
+or unexpected token
+    at wrapSafe (node:
+internal/modules/cjs/l
+oader:1743:18)
+    at 
+Module._compile (node:
+internal/modules/cjs/l
+oader:1786:20)
+    at Object..js (nod
+e:internal/modules/cjs
+/loader:1943:10)
+    at Module.load (no
+de:internal/modules/cj
+s/loader:1533:32)
+    at Module._load (n
+ode:internal/modules/c
+js/loader:1335:12)
+    at wrapModuleLoad 
+(node:internal/modules
+/cjs/loader:255:19)
+    at Module.executeU
+serEntryPoint [as 
+runMain] (node:interna
+l/modules/run_main:154
+:5)
+    at node:internal/m
+ain/run_main_module:33
+:47
+
+Node.js v24.14.0

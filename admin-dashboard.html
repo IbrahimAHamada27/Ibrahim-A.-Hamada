@@ -216,7 +216,7 @@
         <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
             <table style="font-size:0.85rem;">
                 <thead style="position:sticky;top:0;background:#111;">
-                    <tr><th>#</th><th>Type</th><th>Cashier</th><th>Items</th><th>Method</th><th>Discount</th><th>Total</th><th>Time</th></tr>
+                    <tr><th>#</th><th>Type</th><th>Cashier</th><th>Items</th><th>Method</th><th>Discount</th><th>Service</th><th>Total</th><th>Time</th></tr>
                 </thead>
                 <tbody id="report-orders-tbody"><tr><td colspan="8" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
             </table>
@@ -242,6 +242,10 @@
     <div class="modal-content">
         <h3 id="modal-cash-title">Cash Movement</h3>
         <input type="hidden" id="cash-type">
+        <div class="form-group">
+            <label>Assign to Cashier</label>
+            <select id="cash-cashier" required></select>
+        </div>
         <div class="form-group">
             <label>Amount (EGP)</label>
             <input type="number" id="cash-amount" required min="1" step="1">
@@ -375,6 +379,7 @@
                     onEnd: async () => {
                         const ids = [...document.getElementById(`items-${corner.id}`).querySelectorAll('tr[data-id]')].map(r => parseInt(r.dataset.id));
                         await apiCall(`${API}/items/reorder`, { method:'PUT', headers:authHeaders, body:JSON.stringify({ids}) });
+                        showToast('Items reordered successfully');
                     }
                 });
             }
@@ -385,6 +390,7 @@
             onEnd: async () => {
                 const ids = [...container.querySelectorAll('.corner-card[data-id]')].map(c => parseInt(c.dataset.id));
                 await apiCall(`${API}/corners/reorder`, { method:'PUT', headers:authHeaders, body:JSON.stringify({ids}) });
+                showToast('Corners reordered successfully');
             }
         });
     }
@@ -464,11 +470,19 @@
     // ==========================================
     // CASHIER ADMIN DASHBOARD LOGIC
     // ==========================================
-    function openModal(id, extra) {
+    async function openModal(id, extra) {
         if(id === 'modal-cash') {
             document.getElementById('cash-type').value = extra;
             document.getElementById('modal-cash-title').innerText = extra === 'in' ? 'Cash In (Add)' : 'Cash Out (Remove)';
             document.getElementById('btn-submit-cash').className = extra === 'in' ? 'btn btn-success' : 'btn btn-danger';
+            
+            // Populate Cashier select
+            const res = await apiCall(`${API}/users`, { headers: authHeaders });
+            const select = document.getElementById('cash-cashier');
+            if (res.ok && select) {
+                select.innerHTML = '<option value="0">Admin (Me)</option>' + 
+                    res.data.filter(u => u.role === 'cashier').map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+            }
         }
         document.getElementById(id).style.display = 'flex';
     }
@@ -530,9 +544,12 @@
         const type = document.getElementById('cash-type').value;
         const amount = document.getElementById('cash-amount').value;
         const reason = document.getElementById('cash-reason').value;
+        const select = document.getElementById('cash-cashier');
+        const cashier_id = select ? select.value : 0;
+        const cashier_name = select ? select.options[select.selectedIndex].text : 'Admin';
         
         const res = await apiCall(`${API}/cash-movement`, {
-            method: 'POST', headers: authHeaders, body: JSON.stringify({ type, amount, reason })
+            method: 'POST', headers: authHeaders, body: JSON.stringify({ type, amount, reason, cashier_id, cashier_name })
         });
         closeModal('modal-cash');
         if (res.ok) { showToast('Cash logged'); document.getElementById('cash-amount').value=''; document.getElementById('cash-reason').value=''; loadRecentMovements(); } else showToast(res.error, 'error');
@@ -632,10 +649,11 @@
                     <td style="font-size:0.8rem;color:#aaa;max-width:200px;">${o.itemsSummary||'—'}</td>
                     <td>${o.payment_method==='Cash'?'💵 Cash':'💳 Card'}</td>
                     <td style="color:#e74c3c;">${o.discount_amount>0?'− '+o.discount_amount.toFixed(2)+' EGP':'—'}</td>
+                    <td style="color:#f39c12;">${(o.service_charge||0)>0?'+ '+o.service_charge.toFixed(2)+' EGP':'—'}</td>
                     <td style="font-weight:700;color:#4CAF50;">${(o.total||0).toFixed(2)} EGP</td>
                     <td style="font-size:0.78rem;color:#666;">${new Date(o.created_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
                 </tr>`).join('')
-            : '<tr><td colspan="8" style="text-align:center;color:#555;">No orders in this period</td></tr>';
+            : '<tr><td colspan="9" style="text-align:center;color:#555;">No orders in this period</td></tr>';
 
         // Movements list
         document.getElementById('report-movements-tbody').innerHTML = (movements && movements.length)

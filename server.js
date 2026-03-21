@@ -30,7 +30,7 @@ function requireAuth(req, res, next) {
     next();
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'coffee-duck-pos-secret-2025';
+const JWT_SECRET = process.env.JWT_SECRET || 'coffee-duck-pos-secret-v2';
 
 function requireRoles(roles) {
     return (req, res, next) => {
@@ -94,6 +94,7 @@ db.serialize(() => {
     db.run(`ALTER TABLE orders ADD COLUMN order_type TEXT DEFAULT 'Takeaway'`, () => {});
     db.run(`ALTER TABLE cash_movements ADD COLUMN cashier_id INTEGER DEFAULT 0`, () => {});
     db.run(`ALTER TABLE cash_movements ADD COLUMN cashier_name TEXT DEFAULT 'Unknown'`, () => {});
+    db.run(`ALTER TABLE orders ADD COLUMN service_charge REAL DEFAULT 0`, () => {});
 
     db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
         if (!err && row.count === 0) {
@@ -283,11 +284,17 @@ app.delete('/api/users/:id', requireRoles(['admin']), (req, res) => {
 
 // Cash Movements (Cashier-based)
 app.post('/api/cash-movement', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { type, amount, reason } = req.body;
-    const cashierId   = req.user?.id || 0;
-    const cashierName = req.user?.username || 'Unknown';
+    const { type, amount, reason, cashier_id, cashier_name } = req.body;
+    let finalCashierId = req.user?.id || 0;
+    let finalCashierName = req.user?.username || 'Unknown';
+    
+    if (req.user?.role === 'admin' && cashier_id !== undefined) {
+        finalCashierId = cashier_id;
+        finalCashierName = cashier_name || 'Admin';
+    }
+
     db.run('INSERT INTO cash_movements (type, amount, reason, cashier_id, cashier_name) VALUES (?, ?, ?, ?, ?)', 
-        [type, amount, reason, cashierId, cashierName], function(err) {
+        [type, amount, reason, finalCashierId, finalCashierName], function(err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ success: true, id: this.lastID });
     });
@@ -309,12 +316,12 @@ app.get('/api/movements/recent', requireRoles(['admin', 'cashier']), (req, res) 
 
 // Orders (POS)
 app.post('/api/orders', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { status, total, payment_method, discount_amount, notes, items, order_type } = req.body;
+    const { status, total, payment_method, discount_amount, service_charge, notes, items, order_type } = req.body;
     const cashierName = req.user?.username || 'Unknown';
     const cashierId   = req.user?.id || 0;
     
-    db.run('INSERT INTO orders (status, total, payment_method, discount_amount, notes, cashier_id, cashier_name, order_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-        [status || 'open', total, payment_method, discount_amount || 0, notes, cashierId, cashierName, order_type || 'Takeaway'], function(err) {
+    db.run('INSERT INTO orders (status, total, payment_method, discount_amount, notes, cashier_id, cashier_name, order_type, service_charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+        [status || 'open', total, payment_method, discount_amount || 0, notes, cashierId, cashierName, order_type || 'Takeaway', service_charge || 0], function(err) {
         if (err) return res.status(500).json({ error: err.message });
         const orderId = this.lastID;
         
@@ -331,9 +338,9 @@ app.post('/api/orders', requireRoles(['admin', 'cashier']), (req, res) => {
 
 // Update Order (for Multi-cart sync & updates)
 app.put('/api/orders/:id', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { status, total, payment_method, discount_amount, notes, items, order_type } = req.body;
-    db.run('UPDATE orders SET status = ?, total = ?, payment_method = COALESCE(?, payment_method), discount_amount = ?, notes = ?, order_type = ? WHERE id = ?', 
-        [status, total, payment_method, discount_amount, notes, order_type, req.params.id], function(err) {
+    const { status, total, payment_method, discount_amount, service_charge, notes, items, order_type } = req.body;
+    db.run('UPDATE orders SET status = ?, total = ?, payment_method = COALESCE(?, payment_method), discount_amount = ?, notes = ?, order_type = ?, service_charge = ? WHERE id = ?', 
+        [status, total, payment_method, discount_amount, notes, order_type, service_charge || 0, req.params.id], function(err) {
         if (err) return res.status(500).json({ error: err.message });
         
         // Re-write items
@@ -402,7 +409,7 @@ app.get('/api/reports', requireRoles(['admin']), (req, res) => {
             if (err) return res.status(500).json({ error: err.message });
 
             db.all(`SELECT o.id, o.created_at, o.total, o.payment_method, o.cashier_name, o.discount_amount,
-                    o.order_type, GROUP_CONCAT(oi.qty || 'x ' || oi.name, ', ') as itemsSummary
+                    o.service_charge, o.order_type, GROUP_CONCAT(oi.qty || 'x ' || oi.name, ', ') as itemsSummary
                     FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id
                     ${baseWhere} GROUP BY o.id ORDER BY o.id DESC LIMIT 200`, [], (err, orders) => {
                 if (err) return res.status(500).json({ error: err.message });
@@ -424,16 +431,29 @@ app.get('/api/reports', requireRoles(['admin']), (req, res) => {
 app.get('/api/cashier/stats', requireRoles(['admin', 'cashier']), (req, res) => {
     const cashierId = req.user?.id || 0;
     const startOfDay = "datetime('now', 'start of day')";
-    db.get(`SELECT
-        COUNT(*) as totalOrders,
-        COALESCE(SUM(CASE WHEN status='paid' THEN total ELSE 0 END),0) as totalSales,
-        COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
-        COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Card' THEN total ELSE 0 END),0) as cardSales,
-        COUNT(CASE WHEN status='paid' THEN 1 END) as paidOrders
-        FROM orders WHERE cashier_id = ? AND created_at >= ${startOfDay}`,
-        [cashierId], (err, stats) => {
+
+    // Find the last handover time for this cashier today
+    db.get(`SELECT MAX(created_at) as last_handover FROM cash_movements 
+            WHERE cashier_id = ? AND reason LIKE '%تسليم عهدة%' AND created_at >= ${startOfDay}`, [cashierId], (err, mov) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, stats });
+        
+        // If there is a handover today, only count stats AFTER that handover
+        let startTime = startOfDay;
+        if (mov && mov.last_handover) {
+            startTime = `'${mov.last_handover}'`;
+        }
+
+        db.get(`SELECT
+            COUNT(*) as totalOrders,
+            COALESCE(SUM(CASE WHEN status='paid' THEN total ELSE 0 END),0) as totalSales,
+            COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
+            COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Card' THEN total ELSE 0 END),0) as cardSales,
+            COUNT(CASE WHEN status='paid' THEN 1 END) as paidOrders
+            FROM orders WHERE cashier_id = ? AND created_at >= ${startTime}`,
+            [cashierId], (err, stats) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true, stats });
+        });
     });
 });
 
@@ -446,4 +466,4 @@ app.get('/admin-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'adm
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-app.listen(port, () => console.log(\`Coffee Duck Server running at http://localhost:\${port}\`));
+app.listen(port, () => console.log(`Coffee Duck Server running at http://localhost:${port}`));
