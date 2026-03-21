@@ -88,6 +88,11 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS cash_movements (
         id INTEGER PRIMARY KEY AUTOINCREMENT, shift_id INTEGER, type TEXT, amount REAL, reason TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(shift_id) REFERENCES shifts(id)
     )`);
+    // Add cashier columns if not exist (safe migration)
+    db.run(`ALTER TABLE orders ADD COLUMN cashier_id INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE orders ADD COLUMN cashier_name TEXT DEFAULT 'Unknown'`, () => {});
+    db.run(`ALTER TABLE shifts ADD COLUMN cashier_id INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE shifts ADD COLUMN cashier_name TEXT DEFAULT 'Unknown'`, () => {});
 
     db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
         if (!err && row.count === 0) {
@@ -305,32 +310,95 @@ app.delete('/api/users/:id', requireRoles(['admin']), (req, res) => {
     });
 });
 
-// Shifts
+// Shifts — Per Cashier System
+// Each cashier has their own independent shift
 app.post('/api/shifts/open', requireRoles(['admin', 'cashier']), (req, res) => {
     const { opening_cash } = req.body;
-    db.get('SELECT * FROM shifts WHERE status = "open"', [], (err, shift) => {
-        if (shift) return res.status(400).json({ success: false, message: 'A shift is already open' });
-        
-        db.run('INSERT INTO shifts (opening_cash) VALUES (?)', [opening_cash || 0], function(err) {
+    const cashierId   = req.user?.id || 0;
+    const cashierName = req.user?.username || 'Unknown';
+
+    db.get('SELECT * FROM shifts WHERE status = "open" AND cashier_id = ?', [cashierId], (err, existing) => {
+        if (existing) return res.status(400).json({ success: false, message: 'You already have an open shift' });
+        db.run('INSERT INTO shifts (opening_cash, cashier_id, cashier_name) VALUES (?, ?, ?)',
+            [opening_cash || 0, cashierId, cashierName], function(err) {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, shift_id: this.lastID });
+            db.get('SELECT * FROM shifts WHERE id = ?', [this.lastID], (err, shift) => {
+                res.json({ success: true, shift });
+            });
         });
     });
 });
 
-app.post('/api/shifts/close', requireRoles(['admin']), (req, res) => {
-    const { closing_cash } = req.body;
-    db.run('UPDATE shifts SET closed_at = CURRENT_TIMESTAMP, closing_cash = ?, status = "closed" WHERE status = "open"', [closing_cash || 0], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        if (this.changes === 0) return res.status(400).json({ success: false, message: 'No open shift found' });
-        res.json({ success: true });
+app.post('/api/shifts/close', requireRoles(['admin', 'cashier']), (req, res) => {
+    const { closing_cash, shift_id } = req.body;
+    const cashierId = req.user?.id || 0;
+    const role      = req.user?.role || 'cashier';
+
+    // Admin can close any shift; cashier can only close their own
+    const whereClause = role === 'admin'
+        ? (shift_id ? 'WHERE id = ? AND status = "open"' : 'WHERE status = "open" AND cashier_id = ?')
+        : 'WHERE status = "open" AND cashier_id = ?';
+    const param = (role === 'admin' && shift_id) ? shift_id : cashierId;
+
+    db.get(`SELECT * FROM shifts ${whereClause}`, [param], (err, shift) => {
+        if (!shift) return res.status(400).json({ success: false, message: 'No open shift found for you' });
+        db.run('UPDATE shifts SET closed_at = CURRENT_TIMESTAMP, closing_cash = ?, status = "closed" WHERE id = ?',
+            [closing_cash || 0, shift.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true, shift_id: shift.id });
+        });
     });
 });
 
+// Get current cashier's open shift
 app.get('/api/shifts/current', requireRoles(['admin', 'cashier']), (req, res) => {
-    db.get('SELECT * FROM shifts WHERE status = "open"', [], (err, shift) => {
+    const cashierId = req.user?.id || 0;
+    const role      = req.user?.role || 'cashier';
+    // Admin sees any open shift; cashier sees their own
+    const query = role === 'admin'
+        ? 'SELECT * FROM shifts WHERE status = "open" ORDER BY id DESC LIMIT 1'
+        : 'SELECT * FROM shifts WHERE status = "open" AND cashier_id = ? LIMIT 1';
+    const params = role === 'admin' ? [] : [cashierId];
+    db.get(query, params, (err, shift) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ success: true, shift: shift || null });
+    });
+});
+
+// Get ALL shifts (Admin only) — for dashboard
+app.get('/api/shifts/all', requireRoles(['admin']), (req, res) => {
+    db.all('SELECT * FROM shifts ORDER BY id DESC LIMIT 100', [], (err, shifts) => {
+        if (err) return res.status(500).json({ error: err.message });
+        // Attach summary stats to each shift
+        const shiftIds = shifts.map(s => s.id);
+        if (!shiftIds.length) return res.json([]);
+        db.all(`SELECT shift_id,
+                COUNT(*) as orderCount,
+                COALESCE(SUM(CASE WHEN status='paid' THEN total ELSE 0 END),0) as totalSales,
+                COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
+                COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Card' THEN total ELSE 0 END),0) as cardSales
+                FROM orders WHERE shift_id IN (${shiftIds.map(()=>'?').join(',')}) GROUP BY shift_id`,
+            shiftIds, (err, stats) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(shifts.map(s => ({ ...s, ...( stats.find(st=>st.shift_id===s.id) || {orderCount:0,totalSales:0,cashSales:0,cardSales:0}) })));
+        });
+    });
+});
+
+// Cashier daily stats (today's performance for logged-in cashier)
+app.get('/api/cashier/stats', requireRoles(['admin', 'cashier']), (req, res) => {
+    const cashierId = req.user?.id || 0;
+    const startOfDay = "datetime('now', 'start of day')";
+    db.get(`SELECT
+        COUNT(*) as totalOrders,
+        COALESCE(SUM(CASE WHEN status='paid' THEN total ELSE 0 END),0) as totalSales,
+        COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
+        COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Card' THEN total ELSE 0 END),0) as cardSales,
+        COUNT(CASE WHEN status='paid' THEN 1 END) as paidOrders
+        FROM orders WHERE cashier_id = ? AND created_at >= ${startOfDay}`,
+        [cashierId], (err, stats) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, stats });
     });
 });
 
@@ -342,12 +410,39 @@ app.post('/api/shifts/cash-movement', requireRoles(['admin', 'cashier']), (req, 
     });
 });
 
+app.get('/api/shifts/current/movements', requireRoles(['admin', 'cashier']), (req, res) => {
+    const cashierId = req.user?.id || 0;
+    const role      = req.user?.role || 'cashier';
+    const query = role === 'admin'
+        ? 'SELECT id FROM shifts WHERE status = "open" ORDER BY id DESC LIMIT 1'
+        : 'SELECT id FROM shifts WHERE status = "open" AND cashier_id = ? LIMIT 1';
+    const params = role === 'admin' ? [] : [cashierId];
+    
+    db.get(query, params, (err, shift) => {
+        if (err || !shift) return res.json([]);
+        db.all('SELECT * FROM cash_movements WHERE shift_id = ? ORDER BY id DESC', [shift.id], (err, movs) => {
+            res.json(movs || []);
+        });
+    });
+});
+
+app.get('/api/movements/recent', requireRoles(['admin']), (req, res) => {
+    db.all(`SELECT cm.*, s.cashier_name FROM cash_movements cm 
+            LEFT JOIN shifts s ON cm.shift_id = s.id 
+            ORDER BY cm.id DESC LIMIT 50`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
 // Orders (POS)
 app.post('/api/orders', requireRoles(['admin', 'cashier']), (req, res) => {
     const { shift_id, status, total, payment_method, discount_amount, notes, items } = req.body;
+    const cashierName = req.user?.username || 'Unknown';
+    const cashierId   = req.user?.id || 0;
     
-    db.run('INSERT INTO orders (shift_id, status, total, payment_method, discount_amount, notes) VALUES (?, ?, ?, ?, ?, ?)', 
-        [shift_id, status || 'open', total, payment_method, discount_amount || 0, notes], function(err) {
+    db.run('INSERT INTO orders (shift_id, status, total, payment_method, discount_amount, notes, cashier_id, cashier_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+        [shift_id, status || 'open', total, payment_method, discount_amount || 0, notes, cashierId, cashierName], function(err) {
         if (err) return res.status(500).json({ error: err.message });
         const orderId = this.lastID;
         
@@ -359,6 +454,69 @@ app.post('/api/orders', requireRoles(['admin', 'cashier']), (req, res) => {
             stmt.finalize();
         }
         res.json({ success: true, order_id: orderId });
+    });
+});
+
+// Orders for a specific shift (Admin + Cashier)
+app.get('/api/orders/shift/:shiftId', requireRoles(['admin', 'cashier']), (req, res) => {
+    const shiftId = req.params.shiftId;
+    db.all('SELECT * FROM orders WHERE shift_id = ? ORDER BY id DESC', [shiftId], (err, orders) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (orders.length === 0) return res.json([]);
+        const orderIds = orders.map(o => o.id);
+        db.all(`SELECT * FROM order_items WHERE order_id IN (${orderIds.map(()=>'?').join(',')})`, orderIds, (err, items) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(orders.map(o => ({ ...o, items: items.filter(i => i.order_id === o.id) })));
+        });
+    });
+});
+
+// Reports endpoint — period: daily | weekly | monthly | annual
+app.get('/api/reports', requireRoles(['admin']), (req, res) => {
+    const period = req.query.period || 'daily';
+    let dateFilter;
+    switch(period) {
+        case 'weekly':  dateFilter = "datetime('now', '-7 days')"; break;
+        case 'monthly': dateFilter = "datetime('now', '-1 month')"; break;
+        case 'annual':  dateFilter = "datetime('now', '-1 year')"; break;
+        default:        dateFilter = "datetime('now', 'start of day')";
+    }
+
+    const baseWhere = `WHERE status = 'paid' AND created_at >= ${dateFilter}`;
+
+    db.get(`SELECT COUNT(*) as totalOrders, COALESCE(SUM(total),0) as totalSales,
+            COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
+            COALESCE(SUM(CASE WHEN payment_method='Card' THEN total ELSE 0 END),0) as cardSales
+            FROM orders ${baseWhere}`, [], (err, summary) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        db.all(`SELECT cashier_name, cashier_id,
+                COUNT(*) as orderCount,
+                COALESCE(SUM(total),0) as totalSales,
+                COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
+                COALESCE(SUM(CASE WHEN payment_method='Card' THEN total ELSE 0 END),0) as cardSales
+                FROM orders ${baseWhere}
+                GROUP BY cashier_name ORDER BY totalSales DESC`, [], (err, byCashier) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            db.all(`SELECT o.id, o.created_at, o.total, o.payment_method, o.cashier_name, o.discount_amount,
+                    o.shift_id, GROUP_CONCAT(oi.qty || 'x ' || oi.name, ', ') as itemsSummary
+                    FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id
+                    ${baseWhere} GROUP BY o.id ORDER BY o.id DESC LIMIT 200`, [], (err, orders) => {
+                if (err) return res.status(500).json({ error: err.message });
+
+                // Also fetch Cash Movements for this period
+                db.all(`SELECT cm.*, s.cashier_name FROM cash_movements cm
+                        LEFT JOIN shifts s ON cm.shift_id = s.id
+                        WHERE cm.created_at >= ${dateFilter} ORDER BY cm.id DESC`, [], (err, movements) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    const totalIn = movements.filter(m => m.type === 'in').reduce((s, m) => s + m.amount, 0);
+                    const totalOut = movements.filter(m => m.type === 'out').reduce((s, m) => s + m.amount, 0);
+
+                    res.json({ period, summary, byCashier, orders, movements, totalIn, totalOut });
+                });
+            });
+        });
     });
 });
 

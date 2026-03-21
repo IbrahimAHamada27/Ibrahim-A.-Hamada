@@ -602,12 +602,174 @@
             .item-card .item-en { font-size: 0.85rem; }
             .login-card { width: 300px; }
         }
+        /* ══════════════════════════════════════
+           RECEIPT / PRINT
+        ══════════════════════════════════════ */
+        .receipt-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(6px);
+            z-index: 9500;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .receipt-overlay.show { display: flex; }
+        .receipt-card {
+            background: #fff;
+            color: #000;
+            width: 340px;
+            max-height: 90vh;
+            overflow-y: auto;
+            border-radius: 12px;
+            padding: 28px 24px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .receipt-logo {
+            display: block;
+            margin: 0 auto 10px;
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+        }
+        .receipt-shop-name {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 700;
+            font-family: 'Poppins', sans-serif;
+            color: #8B4513;
+            margin-bottom: 2px;
+        }
+        .receipt-tagline {
+            text-align: center;
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+        .receipt-divider {
+            border: none;
+            border-top: 1.5px dashed #bbb;
+            margin: 10px 0;
+        }
+        .receipt-meta { font-size: 11.5px; color: #444; margin-bottom: 6px; }
+        .receipt-meta span { float: right; }
+        .receipt-items { width: 100%; border-collapse: collapse; margin: 8px 0; }
+        .receipt-items th { font-size: 11px; color: #888; text-align: left; padding: 3px 0; border-bottom: 1px solid #ddd; }
+        .receipt-items td { padding: 5px 0; vertical-align: top; font-size: 12.5px; }
+        .receipt-items td:last-child { text-align: right; }
+        .receipt-item-note { font-size: 10.5px; color: #888; font-style: italic; }
+        .receipt-totals { margin-top: 8px; }
+        .receipt-tot-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 2px 0; color: #444; }
+        .receipt-tot-row.grand { font-size: 16px; font-weight: 700; color: #000; border-top: 2px solid #000; padding-top: 6px; margin-top: 4px; }
+        .receipt-tot-row.discount { color: #2a7a2a; }
+        .receipt-method { text-align: center; font-size: 12px; color: #555; margin-top: 8px; }
+        .receipt-thanks {
+            text-align: center;
+            margin-top: 14px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            color: #8B4513;
+            letter-spacing: 0.3px;
+        }
+        .receipt-thanks-sub { text-align: center; font-size: 11px; color: #aaa; margin-top: 2px; }
+        .receipt-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .receipt-btn-print {
+            flex: 1;
+            background: #8B4513;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 13px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .receipt-btn-print:hover { background: #6b3410; }
+        .receipt-btn-close {
+            flex: 1;
+            background: #eee;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            padding: 13px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .receipt-btn-close:hover { background: #ddd; }
+
+        /* Print styles — only show receipt card when printing */
+        @media print {
+            body > *:not(.receipt-overlay) { display: none !important; }
+            .receipt-overlay { display: flex !important; background: #fff !important; backdrop-filter: none !important; }
+            .receipt-actions { display: none !important; }
+            .receipt-card { box-shadow: none !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
+        }
     </style>
 </head>
 <body>
 
 <!-- ══════ TOASTS ══════ -->
 <div id="toasts"></div>
+
+<!-- ══════ RECEIPT OVERLAY ══════ -->
+<div class="receipt-overlay" id="receipt-overlay">
+    <div class="receipt-card" id="receipt-card">
+        <img src="/assets/images/duck.jpeg" alt="Coffee Duck Logo" class="receipt-logo" onerror="this.style.display='none'">
+        <div class="receipt-shop-name">☕ Coffee Duck</div>
+        <div class="receipt-tagline">Your favourite coffee spot</div>
+        <hr class="receipt-divider">
+        <div class="receipt-meta">Order # <span id="r-order-num">—</span></div>
+        <div class="receipt-meta">Date <span id="r-date">—</span></div>
+        <div class="receipt-meta">Cashier <span id="r-cashier">—</span></div>
+        <div class="receipt-meta">Shift # <span id="r-shift">—</span></div>
+        <hr class="receipt-divider">
+        <table class="receipt-items">
+            <thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
+            <tbody id="r-items"></tbody>
+        </table>
+        <hr class="receipt-divider">
+        <div class="receipt-totals">
+            <div class="receipt-tot-row"><span>Subtotal</span><span id="r-subtotal">—</span></div>
+            <div class="receipt-tot-row discount" id="r-discount-row" style="display:none"><span>Discount</span><span id="r-discount">—</span></div>
+            <div class="receipt-tot-row grand"><span>TOTAL</span><span id="r-total">—</span></div>
+        </div>
+        <div class="receipt-method" id="r-method">—</div>
+        <hr class="receipt-divider">
+        <div class="receipt-thanks">🦆 شكراً لزيارتكم!</div>
+        <div class="receipt-thanks-sub">Thank you for choosing Coffee Duck</div>
+        <div class="receipt-thanks-sub" style="margin-top:4px;">نتمنى نشوفكم تاني قريباً 😊</div>
+        <div class="receipt-actions">
+            <button class="receipt-btn-print" onclick="printReceipt()"><i class="fas fa-print"></i> اطبع</button>
+            <button class="receipt-btn-close" onclick="closeReceipt()"><i class="fas fa-times"></i> إغلاق</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ SHIFT ORDERS OVERLAY ══════ -->
+<div class="overlay" id="ov-orders" style="align-items:flex-start; padding-top:40px;">
+    <div class="modal" style="max-width:700px; width:100%;">
+        <div class="modal-head">
+            <h3><i class="fas fa-receipt" style="color:var(--gold)"></i> Shift Orders History</h3>
+            <button class="modal-close" onclick="closeOv('ov-orders')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" id="orders-history-body" style="padding:12px; max-height:70vh; overflow-y:auto;">
+            <div style="text-align:center;color:#555;padding:30px;"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+        </div>
+    </div>
+</div>
 
 <!-- ══════ LOGIN ══════ -->
 <div class="login-overlay" id="login-overlay">
@@ -647,7 +809,13 @@
         <div class="logo"><i class="fas fa-mug-hot"></i> Coffee Duck</div>
         <div class="spacer"></div>
         <div class="user-badge" id="user-badge"><i class="fas fa-user-circle"></i> <span id="user-name">—</span></div>
-        <div class="shift-badge" id="shift-badge"><i class="fas fa-clock"></i> <span id="shift-label">Loading…</span></div>
+        <div class="shift-badge" id="shift-badge" style="cursor:pointer;" onclick="openShiftMenu()"><i class="fas fa-clock"></i> <span id="shift-label">Loading…</span></div>
+        <!-- Cashier Stats Mini -->
+        <div id="cashier-stats-mini" style="display:none;gap:8px;align-items:center;" class="user-badge">
+            <span style="color:var(--gold);font-weight:700;" id="stat-orders">0</span><span style="color:#666;font-size:0.75rem;">orders</span>
+            <span style="color:#4CAF50;font-weight:700;" id="stat-sales">0</span><span style="color:#666;font-size:0.75rem;">EGP</span>
+        </div>
+        <div class="icon-btn" title="Orders History" onclick="openOrders()"><i class="fas fa-receipt"></i></div>
         <div class="icon-btn" title="Logout" onclick="logout()"><i class="fas fa-power-off"></i></div>
     </header>
 
@@ -823,6 +991,40 @@
     </div>
 </div>
 
+<!-- ══════ SHIFT MENU OVERLAY ══════ -->
+<div class="overlay" id="ov-shift-menu">
+    <div class="modal" style="max-width:420px;">
+        <div class="modal-head">
+            <h3><i class="fas fa-clock" style="color:var(--gold)"></i> My Shift</h3>
+            <button class="modal-close" onclick="closeOv('ov-shift-menu')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" id="shift-menu-body">
+            <!-- filled by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- ══════ CASH MOVEMENT MODAL ══════ -->
+<div class="overlay" id="modal-cash">
+    <div class="modal" style="max-width:350px;">
+        <div class="modal-head">
+            <h3 id="cash-modal-title">Cash Movement</h3>
+            <button class="modal-close" onclick="closeOv('modal-cash')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="field">
+                <label>Amount (EGP)</label>
+                <input type="number" id="cash-amount" min="1" step="0.5" placeholder="e.g. 100">
+            </div>
+            <div class="field">
+                <label>Reason</label>
+                <input type="text" id="cash-reason" placeholder="e.g. Purchased supplies">
+            </div>
+            <button class="btn-primary" id="btn-submit-cash" style="width:100%;margin-top:15px;padding:12px;font-weight:bold;cursor:pointer;">Submit</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══════ SCRIPT ══════ -->
 <script>
 const API = '/api';
@@ -901,6 +1103,21 @@ async function initPOS() {
     document.getElementById('user-name').innerText = currentUser.username;
     await checkShift();
     await loadMenu();
+    loadCashierStats();
+}
+
+async function loadCashierStats() {
+    try {
+        const res = await fetch(`${API}/cashier/stats`, { headers: authH() });
+        const d = await res.json();
+        if (d.success && d.stats) {
+            const s = d.stats;
+            const mini = document.getElementById('cashier-stats-mini');
+            document.getElementById('stat-orders').innerText = s.paidOrders || 0;
+            document.getElementById('stat-sales').innerText = (s.totalSales||0).toFixed(0);
+            mini.style.display = 'flex';
+        }
+    } catch {}
 }
 
 async function checkShift() {
@@ -914,11 +1131,146 @@ async function checkShift() {
             label.innerText = `Shift #${currentShift.id}`;
             badge.classList.remove('closed');
         } else {
-            label.innerText = 'No Shift';
+            label.innerText = 'No Shift → Tap';
             badge.classList.add('closed');
-            toast('No active shift — orders cannot be placed', 'err');
         }
     } catch {}
+}
+
+async function openShiftMenu() {
+    openOv('ov-shift-menu');
+    const body = document.getElementById('shift-menu-body');
+    if (currentShift) {
+        // Show stats + close option
+        try {
+            const res = await fetch(`${API}/cashier/stats`, { headers: authH() });
+            const d = await res.json();
+            const s = d.stats || {};
+            body.innerHTML = `
+                <div style="background:#1a1a1a;border-radius:10px;padding:16px;margin-bottom:16px;">
+                    <div style="color:var(--gold);font-weight:700;font-size:1rem;margin-bottom:12px;"><i class="fas fa-chart-line"></i> My Stats Today</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
+                            <div style="color:#aaa;font-size:0.75rem;">Paid Orders</div>
+                            <div style="color:#3a7bd5;font-size:1.5rem;font-weight:700;">${s.paidOrders||0}</div>
+                        </div>
+                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
+                            <div style="color:#aaa;font-size:0.75rem;">Total Sales</div>
+                            <div style="color:#4CAF50;font-size:1.5rem;font-weight:700;">${(s.totalSales||0).toFixed(0)}<span style="font-size:0.75rem;"> EGP</span></div>
+                        </div>
+                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
+                            <div style="color:#aaa;font-size:0.75rem;">Cash</div>
+                            <div style="color:#26a65b;font-size:1.2rem;font-weight:700;">${(s.cashSales||0).toFixed(0)} EGP</div>
+                        </div>
+                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
+                            <div style="color:#aaa;font-size:0.75rem;">Card</div>
+                            <div style="color:#9b59b6;font-size:1.2rem;font-weight:700;">${(s.cardSales||0).toFixed(0)} EGP</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="background:#1a1a1a;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #333;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <div>
+                            <div style="color:#fff;font-weight:600;">Shift #${currentShift.id}</div>
+                            <div style="color:#666;font-size:0.8rem;">Opened: ${new Date(currentShift.opened_at).toLocaleTimeString('ar-EG')}</div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn-primary" style="background:#4CAF50;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.85rem;" onclick="openCashModal('in')">+ In</button>
+                            <button class="btn-primary" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.85rem;" onclick="openCashModal('out')">- Out</button>
+                        </div>
+                    </div>
+                    <!-- Movements List -->
+                    <div id="shift-movements-list" style="max-height:100px;overflow-y:auto;font-size:0.85rem;color:#aaa;">Loading movements...</div>
+                </div>
+                <button class="btn-primary" style="width:100%;background:var(--red);color:#fff;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:700;cursor:pointer;" onclick="closeMyShift()">
+                    <i class="fas fa-stop-circle"></i> Close My Shift
+                </button>`;
+            
+            // Load movements asynchronously
+            fetch(`${API}/shifts/current/movements`, { headers: authH() })
+                .then(r => r.json())
+                .then(movs => {
+                    const mList = document.getElementById('shift-movements-list');
+                    if (movs.length === 0) mList.innerHTML = 'No cash movements yet.';
+                    else mList.innerHTML = movs.map(m => `
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #333;">
+                            <span>${m.type === 'in' ? '<span style="color:#4CAF50;">[+IN]</span>' : '<span style="color:#ff4d4d;">[-OUT]</span>'} ${m.reason}</span>
+                            <span>${m.amount} EGP</span>
+                        </div>
+                    `).join('');
+                });
+        } catch { body.innerHTML = '<p style="color:var(--red)">Failed to load stats</p>'; }
+    } else {
+        body.innerHTML = `
+            <p style="color:#aaa;text-align:center;margin-bottom:20px;">You don't have an open shift.<br>Open one to start taking orders.</p>
+            <div class="field"><label style="color:var(--text-dim);">Opening Cash in Drawer (EGP)</label><input type="number" id="open-cash-input" min="0" step="1" value="0" style="background:#111;border:1.5px solid #333;color:#fff;border-radius:8px;padding:12px;width:100%;font-size:1rem;"></div>
+            <button class="btn-primary" style="width:100%;background:#4CAF50;color:#fff;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:10px;" onclick="openMyShift()">
+                <i class="fas fa-play-circle"></i> Open My Shift
+            </button>`;
+    }
+}
+
+async function openMyShift() {
+    const cash = parseFloat(document.getElementById('open-cash-input')?.value) || 0;
+    try {
+        const res = await fetch(`${API}/shifts/open`, { method:'POST', headers: authH(), body: JSON.stringify({ opening_cash: cash }) });
+        const d = await res.json();
+        if (d.success) {
+            currentShift = d.shift;
+            closeOv('ov-shift-menu');
+            await checkShift();
+            toast('✅ Shift opened!');
+            loadCashierStats();
+        } else { toast(d.message || 'Failed', 'err'); }
+    } catch { toast('Connection error','err'); }
+}
+
+async function closeMyShift() {
+    if (!confirm('Close your shift? You will not be able to take new orders.')) return;
+    try {
+        const res = await fetch(`${API}/shifts/close`, { method:'POST', headers: authH(), body: JSON.stringify({ closing_cash: 0 }) });
+        const d = await res.json();
+        if (d.success) {
+            currentShift = null;
+            closeOv('ov-shift-menu');
+            await checkShift();
+            toast('Shift closed');
+            loadCashierStats();
+        } else { toast(d.message || 'Failed','err'); }
+    } catch { toast('Connection error','err'); }
+}
+
+let activeCashType = 'in';
+function openCashModal(type) {
+    if (!currentShift) return toast('Open a shift first', 'err');
+    activeCashType = type;
+    document.getElementById('cash-modal-title').innerText = type === 'in' ? 'Cash IN (إيداع)' : 'Cash OUT (سحب)';
+    const btn = document.getElementById('btn-submit-cash');
+    btn.style.background = type === 'in' ? '#4CAF50' : 'var(--red)';
+    btn.innerText = type === 'in' ? 'Add Cash' : 'Withdraw Cash';
+    btn.onclick = submitCashMovement;
+    document.getElementById('cash-amount').value = '';
+    document.getElementById('cash-reason').value = '';
+    closeOv('ov-shift-menu');
+    openOv('modal-cash');
+}
+
+async function submitCashMovement() {
+    const amount = parseFloat(document.getElementById('cash-amount').value);
+    const reason = document.getElementById('cash-reason').value.trim();
+    if (!amount || amount <= 0 || !reason) return toast('Please fill all fields', 'err');
+    
+    try {
+        const res = await fetch(`${API}/shifts/cash-movement`, {
+            method: 'POST', headers: authH(),
+            body: JSON.stringify({ shift_id: currentShift.id, type: activeCashType, amount, reason })
+        });
+        const d = await res.json();
+        if (d.success) {
+            toast('Cash movement recorded successfully!');
+            closeOv('modal-cash');
+        } else { toast(d.message || 'Failed', 'err'); }
+    } catch { toast('Connection error', 'err'); }
 }
 
 // ──────────────────────────────
@@ -1195,8 +1547,65 @@ async function confirmPay() {
         const btn = document.getElementById('btn-confirm');
         if(btn.disabled) return;
     }
+    // Capture snapshot BEFORE clearing cart
+    const orderSnapshot = {
+        items: cart.map(i=>({...i})),
+        discount,
+        method: payMethod,
+        cashier: currentUser?.username || '—',
+        shift: currentShift?.id || '—'
+    };
     await submitOrder('paid', payMethod);
     closeOv('ov-payment');
+    showReceipt(orderSnapshot);
+}
+
+let receiptOrderCounter = parseInt(localStorage.getItem('duckOrderNum')||'0');
+
+function showReceipt(snap) {
+    receiptOrderCounter++;
+    localStorage.setItem('duckOrderNum', receiptOrderCounter);
+
+    const sub = snap.items.reduce((s,c)=>s+c.price*c.qty, 0);
+    const total = sub - snap.discount;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('ar-EG') + ' — ' + now.toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
+
+    document.getElementById('r-order-num').innerText = receiptOrderCounter;
+    document.getElementById('r-date').innerText = dateStr;
+    document.getElementById('r-cashier').innerText = snap.cashier;
+    document.getElementById('r-shift').innerText = snap.shift;
+    document.getElementById('r-subtotal').innerText = sub.toFixed(2) + ' EGP';
+    document.getElementById('r-total').innerText = total.toFixed(2) + ' EGP';
+    document.getElementById('r-method').innerText = '💳 ' + (snap.method === 'Cash' ? 'كاش 💵' : 'كارت 💳');
+
+    if(snap.discount > 0) {
+        document.getElementById('r-discount-row').style.display = 'flex';
+        document.getElementById('r-discount').innerText = '− ' + snap.discount.toFixed(2) + ' EGP';
+    } else {
+        document.getElementById('r-discount-row').style.display = 'none';
+    }
+
+    document.getElementById('r-items').innerHTML = snap.items.map(it => `
+        <tr>
+            <td>
+                ${it.name}
+                ${it.notes ? `<div class="receipt-item-note">📝 ${it.notes}</div>` : ''}
+            </td>
+            <td style="text-align:center; padding: 5px 8px;">×${it.qty}</td>
+            <td>${(it.price * it.qty).toFixed(2)} EGP</td>
+        </tr>
+    `).join('');
+
+    document.getElementById('receipt-overlay').classList.add('show');
+}
+
+function closeReceipt() {
+    document.getElementById('receipt-overlay').classList.remove('show');
+}
+
+function printReceipt() {
+    window.print();
 }
 
 async function submitOrder(status, method=null) {
@@ -1251,6 +1660,64 @@ function closeOv(id) { document.getElementById(id).classList.remove('show'); }
 document.querySelectorAll('.overlay').forEach(ov=>{
     ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('show'); });
 });
+
+// ──────────────────────────────
+// ORDERS HISTORY (Shift)
+// ──────────────────────────────
+async function openOrders() {
+    openOv('ov-orders');
+    const body = document.getElementById('orders-history-body');
+    body.innerHTML = '<div style="text-align:center;color:#555;padding:30px;"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+    if (!currentShift) {
+        body.innerHTML = '<p style="text-align:center;color:var(--red);padding:20px;">No active shift</p>';
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/orders/shift/${currentShift.id}`, { headers: authH() });
+        const orders = await res.json();
+        if (!orders.length) {
+            body.innerHTML = '<p style="text-align:center;color:#555;padding:20px;">No orders yet in this shift</p>';
+            return;
+        }
+        const statusColor = { paid: '#4CAF50', held: '#FFC107', open: '#3a7bd5' };
+        const methodIcon  = { Cash: '💵', Card: '💳' };
+        const totalPaid = orders.filter(o=>o.status==='paid').reduce((s,o)=>s+o.total,0);
+        body.innerHTML = `
+            <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                <div style="background:#1a3a1a;border:1px solid #4CAF50;border-radius:8px;padding:10px 16px;flex:1;min-width:120px;text-align:center;">
+                    <div style="color:#aaa;font-size:0.75rem;">Total Paid</div>
+                    <div style="color:#4CAF50;font-size:1.3rem;font-weight:700;">${totalPaid.toFixed(2)} EGP</div>
+                </div>
+                <div style="background:#1a1a3a;border:1px solid #3a7bd5;border-radius:8px;padding:10px 16px;flex:1;min-width:120px;text-align:center;">
+                    <div style="color:#aaa;font-size:0.75rem;">Orders</div>
+                    <div style="color:#3a7bd5;font-size:1.3rem;font-weight:700;">${orders.length}</div>
+                </div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead><tr style="background:#111;">
+                    <th style="padding:8px;text-align:left;color:var(--gold);">#</th>
+                    <th style="padding:8px;color:var(--gold);">Status</th>
+                    <th style="padding:8px;color:var(--gold);">Items</th>
+                    <th style="padding:8px;color:var(--gold);">Cashier</th>
+                    <th style="padding:8px;color:var(--gold);">Method</th>
+                    <th style="padding:8px;text-align:right;color:var(--gold);">Total</th>
+                    <th style="padding:8px;color:var(--gold);">Time</th>
+                </tr></thead>
+                <tbody>
+                    ${orders.map(o=>`
+                    <tr style="border-bottom:1px solid #2a2a2a;">
+                        <td style="padding:8px;"><strong style="color:var(--gold);">#${o.id}</strong></td>
+                        <td style="padding:8px;"><span style="background:${statusColor[o.status]||'#555'}22;color:${statusColor[o.status]||'#aaa'};border:1px solid ${statusColor[o.status]||'#555'};border-radius:4px;padding:2px 7px;font-size:0.78rem;">${o.status.toUpperCase()}</span></td>
+                        <td style="padding:8px;color:#ccc;font-size:0.8rem;max-width:180px;">${(o.items||[]).map(i=>`${i.qty}× ${i.name}`).join('<br>')}</td>
+                        <td style="padding:8px;color:#aaa;">${o.cashier_name||'—'}</td>
+                        <td style="padding:8px;">${methodIcon[o.payment_method]||'—'} ${o.payment_method||'—'}</td>
+                        <td style="padding:8px;text-align:right;font-weight:700;color:${o.status==='paid'?'#4CAF50':'#aaa'}">${o.total.toFixed(2)}</td>
+                        <td style="padding:8px;color:#666;font-size:0.78rem;">${new Date(o.created_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>`;
+    } catch { body.innerHTML = '<p style="color:var(--red);text-align:center;padding:20px;">Failed to load orders</p>'; }
+}
 
 // ──────────────────────────────
 // TOASTS

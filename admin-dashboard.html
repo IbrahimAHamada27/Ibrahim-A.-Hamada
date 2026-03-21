@@ -88,6 +88,7 @@
 <div class="tabs-container">
     <button class="tab-btn active" onclick="switchTab('menu', this)"><i class="fas fa-utensils"></i> Menu Management</button>
     <button class="tab-btn" onclick="switchTab('cashier', this)"><i class="fas fa-cash-register"></i> Cashier Admin</button>
+    <button class="tab-btn" onclick="switchTab('reports', this)"><i class="fas fa-chart-bar"></i> Reports</button>
 </div>
 
 <!-- ======================= TAB: MENU MANAGEMENT ======================= -->
@@ -168,6 +169,7 @@
             <p style="color:#aaa; font-size:0.9rem; margin-bottom:15px;">Log cash added or removed from the drawer manually.</p>
             <button class="btn btn-success" style="width:100%; margin-bottom:10px;" onclick="openModal('modal-cash', 'in')">Cash IN</button>
             <button class="btn btn-danger" style="width:100%;" onclick="openModal('modal-cash', 'out')">Cash OUT</button>
+            <div id="recent-movements-list" style="margin-top:15px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
         </div>
 
         <!-- Active Orders -->
@@ -177,8 +179,85 @@
                 <button class="btn btn-sm" onclick="loadDashboardData()"><i class="fas fa-sync"></i> Refresh</button>
             </div>
             <table style="font-size: 0.9rem;">
-                <thead><tr><th>Order #</th><th>Status</th><th>Total</th><th>Method</th><th>Items</th><th>Time</th></tr></thead>
+                <thead><tr><th>Order #</th><th>Status</th><th>Total</th><th>Method</th><th>Cashier</th><th>Items</th><th>Time</th></tr></thead>
                 <tbody id="orders-tbody"><tr><td colspan="6" style="text-align:center;">Loading orders...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- All Cashier Shifts -->
+    <div class="section-box" style="grid-column: 1 / -1; margin-top:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="color:#ffd700; margin:0;"><i class="fas fa-layer-group"></i> All Cashier Shifts</h3>
+            <button class="btn btn-sm" onclick="loadAllShifts()"><i class="fas fa-sync"></i> Refresh</button>
+        </div>
+        <div style="overflow-x:auto; max-height:360px; overflow-y:auto;">
+            <table style="font-size: 0.85rem; min-width:750px;">
+                <thead style="position:sticky;top:0;background:#111;"><tr>
+                    <th>#</th><th>Cashier</th><th>Status</th>
+                    <th>Opened</th><th>Closed</th>
+                    <th style="color:#4CAF50;">Sales</th><th>Orders</th>
+                    <th>Cash</th><th>Card</th><th></th>
+                </tr></thead>
+                <tbody id="all-shifts-tbody"><tr><td colspan="10" style="text-align:center;color:#555;">Click Cashier Admin to load</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ======================= TAB: REPORTS ======================= -->
+<div id="tab-reports" class="tab-content">
+    <!-- Period Selector -->
+    <div class="section-box" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h3 style="color:#ffd700;margin:0;"><i class="fas fa-chart-bar"></i> Sales Reports</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-sm report-period-btn active" data-period="daily" onclick="loadReport('daily',this)">Today</button>
+                <button class="btn btn-sm report-period-btn" style="background:#333;color:#fff;" data-period="weekly" onclick="loadReport('weekly',this)">This Week</button>
+                <button class="btn btn-sm report-period-btn" style="background:#333;color:#fff;" data-period="monthly" onclick="loadReport('monthly',this)">This Month</button>
+                <button class="btn btn-sm report-period-btn" style="background:#333;color:#fff;" data-period="annual" onclick="loadReport('annual',this)">This Year</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div id="report-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;"></div>
+
+    <!-- Per Cashier -->
+    <div class="section-box" style="margin-bottom:20px;">
+        <h3 style="color:#ffd700;margin-top:0;"><i class="fas fa-users"></i> Sales Per Cashier</h3>
+        <div style="overflow-x:auto;">
+            <table style="font-size:0.9rem;min-width:400px;">
+                <thead><tr>
+                    <th>Cashier</th><th>Orders</th><th>Cash</th><th>Card</th><th style="color:#4CAF50;">Total</th>
+                </tr></thead>
+                <tbody id="report-cashier-tbody"><tr><td colspan="5" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Orders List -->
+    <div class="section-box" style="margin-bottom:20px;">
+        <h3 style="color:#ffd700;margin-top:0;"><i class="fas fa-list"></i> Orders Detail</h3>
+        <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+            <table style="font-size:0.85rem;">
+                <thead style="position:sticky;top:0;background:#111;">
+                    <tr><th>#</th><th>Cashier</th><th>Shift</th><th>Items</th><th>Method</th><th>Discount</th><th>Total</th><th>Time</th></tr>
+                </thead>
+                <tbody id="report-orders-tbody"><tr><td colspan="8" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Period Cash Movements -->
+    <div class="section-box">
+        <h3 style="color:#ffd700;margin-top:0;"><i class="fas fa-money-bill-transfer"></i> Cash Movements</h3>
+        <div style="overflow-x:auto;max-height:250px;overflow-y:auto;">
+            <table style="font-size:0.85rem;">
+                <thead style="position:sticky;top:0;background:#111;">
+                    <tr><th>#</th><th>Cashier</th><th>Shift</th><th>Type</th><th>Amount</th><th>Reason</th><th>Time</th></tr>
+                </thead>
+                <tbody id="report-movements-tbody"><tr><td colspan="7" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -233,6 +312,21 @@
     </div>
 </div>
 
+<!-- Edit Item Modal -->
+<div id="modal-edit-item" class="modal">
+    <div class="modal-content">
+        <h3><i class="fas fa-pen" style="color:#3a7bd5;"></i> Edit Item</h3>
+        <input type="hidden" id="edit-item-id">
+        <div class="form-group"><label>English Name</label><input type="text" id="edit-item-en" required></div>
+        <div class="form-group"><label>Arabic Name</label><input type="text" id="edit-item-ar" dir="rtl" required></div>
+        <div class="form-group"><label>Price (e.g. 80 or 60 / 80)</label><input type="text" id="edit-item-price" required placeholder="80 or 60 / 80"></div>
+        <div style="margin-top:20px;">
+            <button class="btn" style="background:#3a7bd5;color:#fff;margin-right:10px;" onclick="saveEditItem()"><i class="fas fa-save"></i> Save Changes</button>
+            <button class="close-btn" onclick="closeModal('modal-edit-item')">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const API = '/api';
     let cornersData = [];
@@ -280,7 +374,8 @@
         document.getElementById(`tab-${tab}`).classList.add('active');
         btnElement.classList.add('active');
 
-        if (tab === 'cashier') loadDashboardData();
+        if (tab === 'cashier') { loadDashboardData(); loadAllShifts(); }
+        if (tab === 'reports') loadReport('daily', document.querySelector('.report-period-btn[data-period="daily"]'));
     }
 
     // ==========================================
@@ -308,10 +403,10 @@
                 <tr class="item-row" data-id="${item.id}">
                     <td><span class="item-drag-handle"><i class="fas fa-grip-vertical"></i></span></td>
                     <td>${item.nameEn}</td><td dir="rtl">${item.nameAr}</td>
-                    <td><input type="text" value="${item.price}" id="price-${item.id}" style="width:70px;padding:4px;background:#111;color:#fff;border:1px solid #444;"></td>
-                    <td>
-                        <button class="btn btn-sm" id="savebtn-${item.id}" onclick="savePrice(${item.id})">Save</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.id})">Del</button>
+                    <td><span style="color:#ffd700;font-weight:600;">${item.price} EGP</span></td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn btn-sm" style="background:#3a7bd5;color:#fff;margin-right:4px;" onclick="editItem(${item.id}, '${item.nameEn.replace(/'/g,"&#39;")}', '${item.nameAr.replace(/'/g,"&#39;")}', '${item.price}')"><i class="fas fa-pen"></i> Edit</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.id})"><i class="fas fa-trash"></i> Del</button>
                     </td>
                 </tr>
             `).join('') || `<tr><td colspan="5" style="text-align:center;color:#666;">No items</td></tr>`;
@@ -325,7 +420,7 @@
                     <button class="btn btn-danger btn-sm" onclick="deleteCorner(${corner.id})">Delete</button>
                 </div>
                 <div class="corner-body">
-                    <table><thead><tr><th style="width:30px;"></th><th>EN</th><th>AR</th><th>Price</th><th>Actions</th></tr></thead>
+                    <table><thead><tr><th style="width:30px;"></th><th>EN</th><th>AR</th><th>Price</th><th style="min-width:160px;">Actions</th></tr></thead>
                     <tbody id="items-${corner.id}">${itemsRows}</tbody></table>
                 </div>
             `;
@@ -374,6 +469,26 @@
     async function deleteItem(id) { if(confirm('Delete item?')){ await apiCall(`${API}/items/${id}`, { method:'DELETE', headers:authHeaders }); showToast('Deleted'); fetchData(); } }
     async function deleteCorner(id) { if(confirm('Delete corner?')){ await apiCall(`${API}/corners/${id}`, { method:'DELETE', headers:authHeaders }); showToast('Deleted'); fetchData(); } }
 
+    function editItem(id, nameEn, nameAr, price) {
+        document.getElementById('edit-item-id').value = id;
+        document.getElementById('edit-item-en').value = nameEn;
+        document.getElementById('edit-item-ar').value = nameAr;
+        document.getElementById('edit-item-price').value = price;
+        document.getElementById('modal-edit-item').style.display = 'flex';
+    }
+
+    async function saveEditItem() {
+        const id = document.getElementById('edit-item-id').value;
+        const nameEn = document.getElementById('edit-item-en').value.trim();
+        const nameAr = document.getElementById('edit-item-ar').value.trim();
+        const price = document.getElementById('edit-item-price').value.trim();
+        if (!nameEn || !nameAr || !price) return showToast('All fields are required', 'error');
+        const result = await apiCall(`${API}/items/${id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ nameEn, nameAr, price }) });
+        closeModal('modal-edit-item');
+        if (!result.ok) return showToast(result.error, 'error');
+        showToast('Item updated ✅'); fetchData();
+    }
+
     fetchData(); // run once on load
 
     // ==========================================
@@ -395,6 +510,24 @@
         loadUsers();
         await loadShift();
         loadOrders();
+        loadRecentMovements();
+    }
+
+    async function loadRecentMovements() {
+        const res = await apiCall(`${API}/movements/recent`, { headers: authHeaders });
+        if (!res.ok) return;
+        const list = document.getElementById('recent-movements-list');
+        if (!res.data.length) { list.innerHTML = '<span style="color:#555;">No recent movements</span>'; return; }
+        list.innerHTML = res.data.map(m => `
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;">
+                <div>
+                    ${m.type === 'in' ? '<span style="color:#4CAF50;font-weight:bold;">[+IN]</span>' : '<span style="color:#ff4d4d;font-weight:bold;">[-OUT]</span>'}
+                    <span style="color:#ccc;">${m.reason}</span> <br>
+                    <small style="color:#666;">${m.cashier_name||'Unknown'} • Shift #${m.shift_id}</small>
+                </div>
+                <div style="font-weight:bold;color:${m.type==='in'?'#4CAF50':'#ff4d4d'};">${m.amount} EGP</div>
+            </div>
+        `).join('');
     }
 
     async function loadUsers() {
@@ -468,7 +601,7 @@
             method: 'POST', headers: authHeaders, body: JSON.stringify({ shift_id: currentShift.id, type, amount, reason })
         });
         closeModal('modal-cash');
-        if (res.ok) { showToast('Cash logged'); document.getElementById('cash-amount').value=''; document.getElementById('cash-reason').value=''; } else showToast(res.error, 'error');
+        if (res.ok) { showToast('Cash logged'); document.getElementById('cash-amount').value=''; document.getElementById('cash-reason').value=''; loadRecentMovements(); } else showToast(res.error, 'error');
     }
 
     async function loadZReport() {
@@ -523,10 +656,140 @@
                 <td><span class="tag" style="background:${o.status==='open'?'rgba(76,175,80,0.2)':'rgba(255,193,7,0.2)'};color:${o.status==='open'?'#4CAF50':'#FFC107'}">${o.status.toUpperCase()}</span></td>
                 <td>${o.total} EGP</td>
                 <td>${o.payment_method || '-'}</td>
+                <td style="color:#aaa;">${o.cashier_name || '-'}</td>
                 <td style="font-size:0.8rem; color:#aaa;">${o.items.map(i => `${i.qty}x ${i.name}`).join('<br>')}</td>
                 <td style="font-size:0.8rem;">${new Date(o.created_at).toLocaleTimeString()}</td>
             </tr>
-        `).join('') || `<tr><td colspan="6" style="text-align:center; color:#aaa;">No active orders</td></tr>`;
+        `).join('') || `<tr><td colspan="7" style="text-align:center; color:#aaa;">No active orders</td></tr>`;
+    }
+
+    async function loadAllShifts() {
+        const tbody = document.getElementById('all-shifts-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+        const res = await apiCall(`${API}/shifts/all`, { headers: authHeaders });
+        if (!res.ok) { tbody.innerHTML = `<tr><td colspan="10" style="color:#ff4d4d;text-align:center;">❌ ${res.error}</td></tr>`; return; }
+        const shifts = res.data;
+        if (!shifts.length) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#555;">No shifts yet</td></tr>'; return; }
+        tbody.innerHTML = shifts.map(s => {
+            const isOpen = s.status === 'open';
+            const statusHtml = `<span class="tag" style="background:${isOpen?'rgba(76,175,80,0.15)':'rgba(100,100,100,0.15)'};color:${isOpen?'#4CAF50':'#888'};border:1px solid ${isOpen?'#4CAF50':'#444'};">${isOpen?'🟢 OPEN':'■ CLOSED'}</span>`;
+            const closeBtn = isOpen ? `<button class="btn btn-danger btn-sm" onclick="adminCloseShift(${s.id})"><i class="fas fa-stop"></i> Close</button>` : '<span style="color:#444;">—</span>';
+            return `<tr>
+                <td><strong style="color:var(--gold);">#${s.id}</strong></td>
+                <td style="color:#fff;font-weight:600;">${s.cashier_name||'—'}</td>
+                <td>${statusHtml}</td>
+                <td style="font-size:0.8rem;color:#aaa;">${new Date(s.opened_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+                <td style="font-size:0.8rem;color:#666;">${s.closed_at?new Date(s.closed_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</td>
+                <td style="color:#4CAF50;font-weight:700;">${(s.totalSales||0).toFixed(2)} EGP</td>
+                <td style="text-align:center;">${s.orderCount||0}</td>
+                <td style="color:#26a65b;">${(s.cashSales||0).toFixed(2)}</td>
+                <td style="color:#9b59b6;">${(s.cardSales||0).toFixed(2)}</td>
+                <td>${closeBtn}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function adminCloseShift(shiftId) {
+        if (!confirm(`Close shift #${shiftId}?`)) return;
+        const res = await apiCall(`${API}/shifts/close`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ shift_id: shiftId, closing_cash: 0 }) });
+        if (res.ok) { showToast('Shift closed'); loadAllShifts(); loadDashboardData(); }
+        else showToast(res.error || 'Error', 'error');
+    }
+    async function loadReport(period, btnEl) {
+        // Update active button
+        document.querySelectorAll('.report-period-btn').forEach(b => { b.style.background='#333'; b.style.color='#fff'; });
+        if (btnEl) { btnEl.style.background='#ffd700'; btnEl.style.color='#000'; }
+
+        const periodLabels = { daily:'Today', weekly:'This Week', monthly:'This Month', annual:'This Year' };
+
+        document.getElementById('report-summary-cards').innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+        document.getElementById('report-cashier-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+        document.getElementById('report-orders-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+
+        const res = await apiCall(`${API}/reports?period=${period}`, { headers: authHeaders });
+        if (!res.ok) {
+            document.getElementById('report-summary-cards').innerHTML = `<p style="color:#ff4d4d;">❌ ${res.error}</p>`;
+            return;
+        }
+        const { summary, byCashier, orders, movements, totalIn, totalOut } = res.data;
+
+        // Summary cards
+        const netCash = (summary.cashSales || 0) + (totalIn || 0) - (totalOut || 0);
+        document.getElementById('report-summary-cards').innerHTML = `
+            <div style="background:#1a3a1a;border:1.5px solid #4CAF50;border-radius:10px;padding:16px;text-align:center;">
+                <div style="color:#aaa;font-size:0.8rem;margin-bottom:4px;">💰 Total Sales</div>
+                <div style="color:#4CAF50;font-size:1.6rem;font-weight:700;">${(summary.totalSales||0).toFixed(2)}</div>
+                <div style="color:#666;font-size:0.75rem;">EGP</div>
+            </div>
+            <div style="background:#1a1a3a;border:1.5px solid #3a7bd5;border-radius:10px;padding:16px;text-align:center;">
+                <div style="color:#aaa;font-size:0.8rem;margin-bottom:4px;">📦 Total Orders</div>
+                <div style="color:#3a7bd5;font-size:1.6rem;font-weight:700;">${summary.totalOrders||0}</div>
+                <div style="color:#666;font-size:0.75rem;">${periodLabels[period]}</div>
+            </div>
+            <div style="background:#1a3a2a;border:1.5px solid #26a65b;border-radius:10px;padding:16px;text-align:center;">
+                <div style="color:#aaa;font-size:0.8rem;margin-bottom:4px;">💵 Net Cash</div>
+                <div style="color:#26a65b;font-size:1.6rem;font-weight:700;">${netCash.toFixed(2)}</div>
+                <div style="color:#666;font-size:0.75rem;">Sales + In - Out</div>
+            </div>
+            <div style="background:#2a1a3a;border:1.5px solid #9b59b6;border-radius:10px;padding:16px;text-align:center;">
+                <div style="color:#aaa;font-size:0.8rem;margin-bottom:4px;">💳 Card</div>
+                <div style="color:#9b59b6;font-size:1.6rem;font-weight:700;">${(summary.cardSales||0).toFixed(2)}</div>
+                <div style="color:#666;font-size:0.75rem;">EGP</div>
+            </div>
+            <div style="background:#1a1a1a;border:1.5px solid #4CAF50;border-radius:10px;padding:16px;text-align:center;">
+                <div style="color:#aaa;font-size:0.8rem;margin-bottom:4px;">🟢 Cash In</div>
+                <div style="color:#4CAF50;font-size:1.6rem;font-weight:700;">${(totalIn||0).toFixed(2)}</div>
+                <div style="color:#666;font-size:0.75rem;">Deposits</div>
+            </div>
+            <div style="background:#1a1a1a;border:1.5px solid #e74c3c;border-radius:10px;padding:16px;text-align:center;">
+                <div style="color:#aaa;font-size:0.8rem;margin-bottom:4px;">🔴 Cash Out</div>
+                <div style="color:#e74c3c;font-size:1.6rem;font-weight:700;">${(totalOut||0).toFixed(2)}</div>
+                <div style="color:#666;font-size:0.75rem;">Withdrawals</div>
+            </div>
+        `;
+
+        // Per cashier
+        document.getElementById('report-cashier-tbody').innerHTML = byCashier.length
+            ? byCashier.map(c => `
+                <tr>
+                    <td><strong style="color:#ffd700;">${c.cashier_name}</strong></td>
+                    <td style="text-align:center;">${c.orderCount}</td>
+                    <td>${(c.cashSales||0).toFixed(2)} EGP</td>
+                    <td>${(c.cardSales||0).toFixed(2)} EGP</td>
+                    <td style="color:#4CAF50;font-weight:700;">${(c.totalSales||0).toFixed(2)} EGP</td>
+                </tr>`).join('')
+            : '<tr><td colspan="5" style="text-align:center;color:#555;">No sales in this period</td></tr>';
+
+        // Orders list
+        document.getElementById('report-orders-tbody').innerHTML = orders.length
+            ? orders.map(o => `
+                <tr>
+                    <td><strong>#${o.id}</strong></td>
+                    <td style="color:#ffd700;">${o.cashier_name||'—'}</td>
+                    <td style="color:#aaa;">#${o.shift_id}</td>
+                    <td style="font-size:0.8rem;color:#aaa;max-width:200px;">${o.itemsSummary||'—'}</td>
+                    <td>${o.payment_method==='Cash'?'💵 Cash':'💳 Card'}</td>
+                    <td style="color:#e74c3c;">${o.discount_amount>0?'− '+o.discount_amount.toFixed(2)+' EGP':'—'}</td>
+                    <td style="font-weight:700;color:#4CAF50;">${(o.total||0).toFixed(2)} EGP</td>
+                    <td style="font-size:0.78rem;color:#666;">${new Date(o.created_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+                </tr>`).join('')
+            : '<tr><td colspan="8" style="text-align:center;color:#555;">No orders in this period</td></tr>';
+
+        // Movements list
+        document.getElementById('report-movements-tbody').innerHTML = (movements && movements.length)
+            ? movements.map(m => `
+                <tr>
+                    <td><strong>#${m.id}</strong></td>
+                    <td style="color:#ffd700;">${m.cashier_name||'—'}</td>
+                    <td style="color:#aaa;">#${m.shift_id}</td>
+                    <td style="font-weight:bold;color:${m.type==='in'?'#4CAF50':'#e74c3c'};">${m.type.toUpperCase()}</td>
+                    <td>${(m.amount||0).toFixed(2)} EGP</td>
+                    <td style="color:#ccc;">${m.reason}</td>
+                    <td style="font-size:0.78rem;color:#666;">${new Date(m.created_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="7" style="text-align:center;color:#555;">No movements in this period</td></tr>';
     }
 
 </script>
