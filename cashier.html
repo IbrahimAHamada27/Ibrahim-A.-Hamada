@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Coffee Duck — POS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --gold: #ffd700;
+            --gold-dark: #e6c200;
+            --bg: #141414;
+            --bg2: #1e1e1e;
+            --bg3: #262626;
+            --border: #333;
+            --text: #fff;
+            --text-dim: #aaa;
+            --green: #4CAF50;
+            --red: #ff4444;
+            --yellow: #FFC107;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 4px 20px rgba(0,0,0,0.4);
+            --transition: 0.2s ease;
+            --header-h: 60px;
+            --cat-h: 62px;
+        }
+
+        html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Poppins', sans-serif; font-size: 14px; }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
+
+        /* ══════════════════════════════════════
+           LAYOUT
+        ══════════════════════════════════════ */
+        .pos-wrap {
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            grid-template-rows: var(--header-h) 1fr;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── Header ── */
+        .top-bar {
+            grid-column: 1 / -1;
+            background: #0d0d0d;
+            border-bottom: 2px solid var(--gold);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 12px;
+            height: var(--header-h);
+        }
+        .top-bar .logo { color: var(--gold); font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .top-bar .logo i { font-size: 1.4rem; }
+        .top-bar .spacer { flex: 1; }
+        .top-bar .user-badge {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 5px 14px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .top-bar .shift-badge {
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1.5px solid var(--green);
+            color: var(--green);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .top-bar .shift-badge.closed { border-color: var(--red); color: var(--red); }
+        .top-bar .icon-btn {
+            width: 36px; height: 36px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text-dim);
+            transition: var(--transition);
+        }
+        .top-bar .icon-btn:hover { background: var(--border); color: var(--text); }
+
+        /* ── Left: Menu ── */
+        .menu-area {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-right: 1px solid var(--border);
+        }
+
+        /* Category tabs */
+        .cat-tabs {
+            display: flex;
+            background: var(--bg2);
+            overflow-x: auto;
+            padding: 8px 12px;
+            gap: 8px;
+            border-bottom: 1px solid var(--border);
+            height: var(--cat-h);
+            align-items: center;
+            scrollbar-width: none;
+            flex-shrink: 0;
+        }
+        .cat-tabs::-webkit-scrollbar { display: none; }
+        .cat-tab {
+            flex-shrink: 0;
+            padding: 8px 18px;
+            background: var(--bg3);
+            border: 1.5px solid transparent;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+        .cat-tab:hover { border-color: var(--border); color: var(--text); }
+        .cat-tab.active { background: var(--gold); color: #000; font-weight: 600; border-color: var(--gold); }
+
+        /* Item grid */
+        .item-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            align-content: start;
+        }
+
+        .item-card {
+            background: var(--bg2);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 12px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .item-card:hover { border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,215,0,0.15); }
+        .item-card:active { transform: scale(0.97); }
+        .item-card .item-en { font-weight: 600; font-size: 0.95rem; line-height: 1.3; }
+        .item-card .item-ar { font-size: 0.85rem; color: var(--text-dim); }
+        .item-card .item-price { color: var(--gold); font-weight: 700; font-size: 1.05rem; margin-top: 6px; }
+
+        /* ── Right: Cart ── */
+        .cart-area {
+            display: flex;
+            flex-direction: column;
+            background: var(--bg2);
+            overflow: hidden;
+        }
+        .cart-head {
+            background: var(--bg);
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .cart-head h2 { font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .cart-count {
+            background: var(--gold);
+            color: #000;
+            font-size: 0.75rem;
+            font-weight: 700;
+            min-width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
+        }
+        .btn-void {
+            background: rgba(255,68,68,0.1);
+            border: 1px solid rgba(255,68,68,0.3);
+            color: var(--red);
+            border-radius: var(--radius-sm);
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-family: inherit;
+            transition: var(--transition);
+        }
+        .btn-void:hover { background: rgba(255,68,68,0.2); }
+
+        .cart-items {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .cart-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #3a3a3a;
+            gap: 10px;
+        }
+        .cart-empty i { font-size: 3rem; }
+        .cart-empty span { font-size: 0.9rem; }
+
+        .cart-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            animation: slideIn 0.2s ease;
+        }
+        @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+
+        .ci-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+        .ci-name { font-weight: 600; font-size: 0.9rem; flex: 1; line-height: 1.3; }
+        .ci-total { font-weight: 700; color: var(--gold); white-space: nowrap; font-size: 0.95rem; }
+        .ci-note { font-size: 0.78rem; color: #777; margin-top: 4px; font-style: italic; }
+        .ci-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+
+        .qty-ctrl { display: flex; align-items: center; background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+        .qty-btn { background: none; border: none; color: var(--gold); padding: 6px 12px; cursor: pointer; font-size: 1.1rem; transition: var(--transition); display: flex; align-items: center; }
+        .qty-btn:hover { background: var(--border); }
+        .qty-val { min-width: 28px; text-align: center; font-weight: 600; font-size: 0.95rem; }
+
+        .ci-actions { display: flex; gap: 6px; }
+        .ci-act-btn {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 6px;
+            padding: 5px 9px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: var(--transition);
+        }
+        .ci-act-btn:hover { color: var(--text); border-color: #555; }
+        .ci-act-btn.del:hover { color: var(--red); border-color: var(--red); }
+
+        /* Cart Footer */
+        .cart-footer {
+            background: var(--bg);
+            border-top: 1px solid var(--border);
+            padding: 12px 14px;
+            flex-shrink: 0;
+        }
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .qa-btn {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: var(--radius-sm);
+            padding: 9px 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .qa-btn i { font-size: 1.1rem; }
+        .qa-btn:hover { background: var(--border); color: var(--text); }
+        .qa-btn.held-btn { color: var(--yellow); border-color: rgba(255,193,7,0.3); }
+        .qa-btn.disc-btn { color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+
+        .totals { margin-bottom: 10px; }
+        .tot-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 0.9rem; color: var(--text-dim); }
+        .tot-row.grand { color: var(--gold); font-size: 1.3rem; font-weight: 700; padding-top: 10px; border-top: 1px dashed var(--border); margin-top: 6px; }
+        .tot-row.discount { color: #4ade80; }
+
+        .btn-pay {
+            width: 100%;
+            background: linear-gradient(135deg, var(--green), #388E3C);
+            border: none;
+            color: #fff;
+            border-radius: var(--radius);
+            padding: 14px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+            letter-spacing: 0.5px;
+        }
+        .btn-pay:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-pay:disabled { background: #2a3a2a; color: #456045; cursor: not-allowed; transform: none; }
+
+        /* ══════════════════════════════════════
+           MODALS
+        ══════════════════════════════════════ */
+        .overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            z-index: 900;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            animation: fadeIn 0.2s ease;
+        }
+        .overlay.show { display: flex; }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+
+        .modal {
+            background: var(--bg2);
+            border: 1px solid #3a3a3a;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: var(--shadow);
+            animation: slideUp 0.25s ease;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+
+        .modal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg2);
+            z-index: 1;
+        }
+        .modal-head h3 { font-size: 1.1rem; color: var(--gold); margin: 0; }
+        .modal-close { background: none; border: none; color: var(--text-dim); font-size: 1.3rem; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: var(--transition); }
+        .modal-close:hover { background: var(--bg3); color: var(--text); }
+        .modal-body { padding: 18px 20px; }
+        .modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+
+        .field { margin-bottom: 16px; }
+        .field label { display: block; color: var(--text-dim); font-size: 0.85rem; margin-bottom: 6px; }
+        .field input, .field select {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+        .field input:focus, .field select:focus { outline: none; border-color: var(--gold); }
+        .field input::placeholder { color: #555; }
+
+        /* Buttons */
+        .btn-primary { background: var(--gold); color: #000; border: none; border-radius: var(--radius-sm); padding: 12px 20px; font-family: inherit; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: var(--transition); flex: 1; }
+        .btn-primary:hover { background: var(--gold-dark); }
+        .btn-secondary { background: var(--bg3); color: var(--text-dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 20px; font-family: inherit; font-size: 0.95rem; cursor: pointer; transition: var(--transition); }
+        .btn-secondary:hover { background: var(--border); color: var(--text); }
+        .btn-danger { background: rgba(255,68,68,0.15); color: var(--red); border: 1px solid rgba(255,68,68,0.3); border-radius: var(--radius-sm); padding: 12px 20px; font-family: inherit; font-size: 0.95rem; cursor: pointer; transition: var(--transition); }
+        .btn-danger:hover { background: rgba(255,68,68,0.25); }
+
+        /* ── Login Modal ── */
+        .login-overlay {
+            position: fixed; inset: 0;
+            background: #0d0d0d;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            text-align: center;
+            width: 340px;
+        }
+        .login-logo { font-size: 3.5rem; color: var(--gold); margin-bottom: 8px; }
+        .login-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 4px; }
+        .login-sub { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 30px; }
+        .pin-dots {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+        .pin-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            border: 2px solid #444;
+            transition: var(--transition);
+        }
+        .pin-dot.filled { background: var(--gold); border-color: var(--gold); }
+        .pin-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+        }
+        .pin-key {
+            height: 66px;
+            background: var(--bg2);
+            border: 1.5px solid var(--border);
+            border-radius: 14px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pin-key:hover, .pin-key:active { background: #2a2a2a; border-color: var(--gold); transform: scale(0.97); }
+        .pin-key.enter { background: var(--green); border-color: var(--green); color: #fff; }
+        .pin-key.clear { background: var(--bg3); font-size: 1rem; color: var(--text-dim); }
+        .login-err { color: var(--red); font-size: 0.9rem; margin-top: 16px; min-height: 20px; }
+
+        /* ── Payment Modal ── */
+        .amount-due-box {
+            background: var(--bg);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 18px;
+        }
+        .amount-due-label { color: var(--text-dim); font-size: 0.85rem; }
+        .amount-due-value { color: var(--text); font-size: 2.5rem; font-weight: 700; margin-top: 4px; }
+        .pay-methods { display: flex; gap: 10px; margin-bottom: 16px; }
+        .pay-method {
+            flex: 1;
+            padding: 14px;
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            text-align: center;
+            transition: var(--transition);
+            color: var(--text-dim);
+        }
+        .pay-method:hover { border-color: #555; color: var(--text); }
+        .pay-method.active { border-color: var(--green); color: var(--green); background: rgba(76,175,80,0.08); }
+        .pay-method i { font-size: 1.4rem; display: block; margin-bottom: 6px; }
+        .change-display {
+            background: rgba(76,175,80,0.1);
+            border: 1px solid rgba(76,175,80,0.3);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .change-display.over { background: rgba(255,68,68,0.1); border-color: rgba(255,68,68,0.3); }
+        .change-display .change-label { color: var(--text-dim); }
+        .change-display .change-value { font-size: 1.4rem; font-weight: 700; color: var(--green); }
+        .change-display.over .change-value { color: var(--red); }
+
+        /* ── Price Select Modal ── */
+        .price-option {
+            background: var(--bg);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .price-option:hover { border-color: var(--gold); background: rgba(255,215,0,0.05); }
+        .price-option .size-label { font-weight: 600; }
+        .price-option .size-price { color: var(--gold); font-weight: 700; font-size: 1.1rem; }
+
+        /* ── Held Orders ── */
+        .held-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .held-card .hc-num { color: var(--gold); font-weight: 700; font-size: 1.05rem; }
+        .held-card .hc-items { color: var(--text-dim); font-size: 0.82rem; margin-top: 3px; }
+        .held-card .hc-total { font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; text-align: right; }
+
+        /* Toasts */
+        #toasts {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 8000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: var(--shadow);
+            animation: toastIn 0.3s ease;
+            white-space: nowrap;
+        }
+        .toast.ok { background: #1a4a1a; border: 1.5px solid var(--green); color: #fff; }
+        .toast.err { background: #4a1a1a; border: 1.5px solid var(--red); color: #fff; }
+        @keyframes toastIn { from { transform: translateY(-10px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+
+        /* ══════════════════════════════════════
+           RESPONSIVE BREAKPOINTS
+        ══════════════════════════════════════ */
+
+        /* Large tablets / small laptops (≤1024px) */
+        @media (max-width: 1024px) {
+            .pos-wrap { grid-template-columns: 1fr 300px; }
+            .item-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+        }
+
+        /* Tablets portrait / landscape (≤768px) — switch to stacked mode */
+        @media (max-width: 768px) {
+            html, body { overflow: hidden; }
+
+            .pos-wrap {
+                grid-template-columns: 1fr;
+                grid-template-rows: var(--header-h) 1fr auto;
+            }
+
+            .menu-area { border-right: none; border-bottom: 1px solid var(--border); }
+
+            /* On tablet, cart slides in from bottom as a drawer */
+            .cart-area {
+                position: fixed;
+                bottom: 0; left: 0; right: 0;
+                height: 45vh;
+                border-top: 2px solid var(--gold);
+                border-radius: 20px 20px 0 0;
+                z-index: 800;
+                transform: translateY(calc(100% - 58px));
+                transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+            }
+            .cart-area.open { transform: translateY(0); }
+
+            .cart-head {
+                border-radius: 20px 20px 0 0;
+                cursor: pointer;
+            }
+            .cart-head::before {
+                content: '';
+                width: 40px; height: 4px;
+                background: #444;
+                border-radius: 2px;
+                display: block;
+                margin: 0 auto 10px;
+            }
+
+            /* Item grid uses more columns on tablet */
+            .item-grid {
+                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                padding-bottom: 70px; /* room for cart handle */
+            }
+
+            /* Modals full-screen on mobile */
+            .modal { max-width: 100%; border-radius: 20px 20px 0 0; }
+            .overlay { align-items: flex-end; }
+        }
+
+        @media (max-width: 480px) {
+            .top-bar .user-badge { display: none; }
+            .item-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 10px; }
+            .item-card { padding: 10px; }
+            .item-card .item-en { font-size: 0.85rem; }
+            .login-card { width: 300px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══════ TOASTS ══════ -->
+<div id="toasts"></div>
+
+<!-- ══════ LOGIN ══════ -->
+<div class="login-overlay" id="login-overlay">
+    <div class="login-card">
+        <div class="login-logo"><i class="fas fa-mug-hot"></i></div>
+        <div class="login-title">Coffee Duck</div>
+        <div class="login-sub">Point of Sale — Enter your PIN</div>
+        <div class="pin-dots">
+            <div class="pin-dot" id="dot-0"></div>
+            <div class="pin-dot" id="dot-1"></div>
+            <div class="pin-dot" id="dot-2"></div>
+            <div class="pin-dot" id="dot-3"></div>
+        </div>
+        <div class="pin-grid">
+            <button class="pin-key" onclick="addPin('1')">1</button>
+            <button class="pin-key" onclick="addPin('2')">2</button>
+            <button class="pin-key" onclick="addPin('3')">3</button>
+            <button class="pin-key" onclick="addPin('4')">4</button>
+            <button class="pin-key" onclick="addPin('5')">5</button>
+            <button class="pin-key" onclick="addPin('6')">6</button>
+            <button class="pin-key" onclick="addPin('7')">7</button>
+            <button class="pin-key" onclick="addPin('8')">8</button>
+            <button class="pin-key" onclick="addPin('9')">9</button>
+            <button class="pin-key clear" onclick="clearPin()"><i class="fas fa-delete-left"></i></button>
+            <button class="pin-key" onclick="addPin('0')">0</button>
+            <button class="pin-key enter" onclick="submitPin()"><i class="fas fa-check"></i></button>
+        </div>
+        <div class="login-err" id="login-err"></div>
+    </div>
+</div>
+
+<!-- ══════ MAIN POS LAYOUT ══════ -->
+<div class="pos-wrap">
+
+    <!-- Header -->
+    <header class="top-bar">
+        <div class="logo"><i class="fas fa-mug-hot"></i> Coffee Duck</div>
+        <div class="spacer"></div>
+        <div class="user-badge" id="user-badge"><i class="fas fa-user-circle"></i> <span id="user-name">—</span></div>
+        <div class="shift-badge" id="shift-badge"><i class="fas fa-clock"></i> <span id="shift-label">Loading…</span></div>
+        <div class="icon-btn" title="Logout" onclick="logout()"><i class="fas fa-power-off"></i></div>
+    </header>
+
+    <!-- Menu Panel -->
+    <div class="menu-area">
+        <div class="cat-tabs" id="cat-tabs"></div>
+        <div class="item-grid" id="item-grid">
+            <div style="grid-column:1/-1; text-align:center; padding:40px; color:#444;">
+                <i class="fas fa-spinner fa-spin fa-2x"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cart Panel -->
+    <div class="cart-area" id="cart-area">
+        <div class="cart-head" id="cart-head" onclick="toggleCartDrawer()">
+            <h2>
+                <i class="fas fa-shopping-basket" style="color:var(--gold)"></i>
+                Order
+                <span class="cart-count" id="cart-count">0</span>
+            </h2>
+            <button class="btn-void" onclick="event.stopPropagation(); voidCart()">
+                <i class="fas fa-trash"></i> Void
+            </button>
+        </div>
+
+        <div class="cart-items" id="cart-items">
+            <div class="cart-empty" id="cart-empty">
+                <i class="fas fa-cart-plus"></i>
+                <span>Tap an item to add</span>
+            </div>
+        </div>
+
+        <div class="cart-footer">
+            <div class="quick-actions">
+                <button class="qa-btn held-btn" onclick="openHeld()">
+                    <i class="fas fa-layer-group"></i>Held
+                </button>
+                <button class="qa-btn held-btn" onclick="holdOrder()">
+                    <i class="fas fa-pause"></i>Hold
+                </button>
+                <button class="qa-btn disc-btn" onclick="openDiscount()">
+                    <i class="fas fa-tags"></i>Discount
+                </button>
+            </div>
+
+            <div class="totals">
+                <div class="tot-row">
+                    <span>Subtotal</span>
+                    <span id="subtotal">0.00 EGP</span>
+                </div>
+                <div class="tot-row discount" id="discount-row" style="display:none;">
+                    <span>Discount</span>
+                    <span id="discount-val">— 0.00</span>
+                </div>
+                <div class="tot-row grand">
+                    <span>Total</span>
+                    <span id="grand-total">0.00</span>
+                </div>
+            </div>
+
+            <button class="btn-pay" id="btn-pay" onclick="openPayment()" disabled>
+                PAY NOW
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ MODALS ══════ -->
+
+<!-- Price Select -->
+<div class="overlay" id="ov-price">
+    <div class="modal" style="max-width:380px;">
+        <div class="modal-head">
+            <h3 id="price-title">Select Size</h3>
+            <button class="modal-close" onclick="closeOv('ov-price')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" id="price-options"></div>
+    </div>
+</div>
+
+<!-- Note -->
+<div class="overlay" id="ov-note">
+    <div class="modal" style="max-width:380px;">
+        <div class="modal-head">
+            <h3>Add Kitchen Note</h3>
+            <button class="modal-close" onclick="closeOv('ov-note')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="note-idx">
+            <div class="field">
+                <input type="text" id="note-input" placeholder="e.g. No ice, extra sugar…" autocomplete="off">
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-primary" onclick="saveNote()">Save Note</button>
+            <button class="btn-secondary" onclick="closeOv('ov-note')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Discount -->
+<div class="overlay" id="ov-discount">
+    <div class="modal" style="max-width:360px;">
+        <div class="modal-head">
+            <h3>Apply Discount</h3>
+            <button class="modal-close" onclick="closeOv('ov-discount')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="field">
+                <label>Discount Amount (EGP)</label>
+                <input type="number" id="disc-input" min="0" step="1" placeholder="0">
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-primary" onclick="applyDiscount()">Apply</button>
+            <button class="btn-secondary" onclick="closeOv('ov-discount')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Payment -->
+<div class="overlay" id="ov-payment">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>Checkout</h3>
+            <button class="modal-close" onclick="closeOv('ov-payment')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="amount-due-box">
+                <div class="amount-due-label">Amount Due</div>
+                <div class="amount-due-value" id="pay-due">0.00 EGP</div>
+            </div>
+
+            <div class="pay-methods">
+                <div class="pay-method active" id="pm-cash" onclick="selectMethod('Cash')">
+                    <i class="fas fa-money-bill-wave"></i>Cash
+                </div>
+                <div class="pay-method" id="pm-card" onclick="selectMethod('Card')">
+                    <i class="fas fa-credit-card"></i>Card
+                </div>
+            </div>
+
+            <div id="cash-section">
+                <div class="field">
+                    <label>Amount Received</label>
+                    <input type="number" id="received" min="0" step="1" placeholder="0" oninput="calcChange()">
+                </div>
+                <div class="change-display" id="change-box">
+                    <span class="change-label">Change</span>
+                    <span class="change-value" id="change-val">0.00 EGP</span>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-primary" id="btn-confirm" onclick="confirmPay()" style="background:var(--green); color:#fff;">
+                <i class="fas fa-check-circle"></i> Complete Payment
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Held Orders -->
+<div class="overlay" id="ov-held">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>Held Orders</h3>
+            <button class="modal-close" onclick="closeOv('ov-held')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" id="held-list">
+            <div style="text-align:center; color:#555; padding:20px;">Loading…</div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ SCRIPT ══════ -->
+<script>
+const API = '/api';
+let token = localStorage.getItem('posToken');
+let currentUser = null;
+let currentShift = null;
+let menusData = [];
+let cart = [];
+let discount = 0;
+let heldOrderId = null;
+let payMethod = 'Cash';
+let cartOpen = false; // for tablet drawer
+
+// ──────────────────────────────
+// AUTH
+// ──────────────────────────────
+let pinStr = '';
+function addPin(d) {
+    if (pinStr.length >= 4) return;
+    pinStr += d;
+    updatePinDots();
+    if (pinStr.length === 4) setTimeout(submitPin, 120);
+}
+function clearPin() {
+    pinStr = pinStr.slice(0, -1);
+    updatePinDots();
+}
+function updatePinDots() {
+    for(let i=0;i<4;i++) {
+        document.getElementById(`dot-${i}`).classList.toggle('filled', i < pinStr.length);
+    }
+}
+async function submitPin() {
+    try {
+        const res = await fetch(`${API}/pos/login`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ pin: pinStr })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            token = data.token; localStorage.setItem('posToken', token);
+            document.getElementById('login-overlay').style.display = 'none';
+            currentUser = data.user;
+            initPOS();
+        } else {
+            document.getElementById('login-err').innerText = '✖ Incorrect PIN. Try again.';
+            pinStr = ''; updatePinDots();
+            setTimeout(()=>document.getElementById('login-err').innerText='', 2000);
+        }
+    } catch {
+        document.getElementById('login-err').innerText = '✖ Connection error';
+        pinStr = ''; updatePinDots();
+    }
+}
+async function verifyToken() {
+    try {
+        const res = await fetch(`${API}/pos/verify`, { headers: authH() });
+        const d = await res.json();
+        if (res.ok && d.success) {
+            currentUser = d.user;
+            document.getElementById('login-overlay').style.display = 'none';
+            initPOS();
+        } else { localStorage.removeItem('posToken'); }
+    } catch {}
+}
+function logout() {
+    if(!confirm('Log out?')) return;
+    localStorage.removeItem('posToken');
+    location.reload();
+}
+function authH() {
+    return { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` };
+}
+
+async function initPOS() {
+    document.getElementById('user-name').innerText = currentUser.username;
+    await checkShift();
+    await loadMenu();
+}
+
+async function checkShift() {
+    try {
+        const res = await fetch(`${API}/shifts/current`, { headers: authH() });
+        const d = await res.json();
+        currentShift = d.shift || null;
+        const badge = document.getElementById('shift-badge');
+        const label = document.getElementById('shift-label');
+        if (currentShift) {
+            label.innerText = `Shift #${currentShift.id}`;
+            badge.classList.remove('closed');
+        } else {
+            label.innerText = 'No Shift';
+            badge.classList.add('closed');
+            toast('No active shift — orders cannot be placed', 'err');
+        }
+    } catch {}
+}
+
+// ──────────────────────────────
+// MENU
+// ──────────────────────────────
+async function loadMenu() {
+    const res = await fetch(`${API}/corners`);
+    menusData = await res.json();
+    buildCategories();
+    showCategory(0);
+}
+
+function buildCategories() {
+    const tabs = document.getElementById('cat-tabs');
+    tabs.innerHTML = menusData.map((c,i) =>
+        `<button class="cat-tab ${i===0?'active':''}" id="ct-${i}" onclick="showCategory(${i})">${c.nameEn}</button>`
+    ).join('');
+}
+
+function showCategory(idx) {
+    document.querySelectorAll('.cat-tab').forEach(b=>b.classList.remove('active'));
+    const btn = document.getElementById(`ct-${idx}`);
+    if(btn) { btn.classList.add('active'); btn.scrollIntoView({inline:'nearest', behavior:'smooth'}); }
+
+    const grid = document.getElementById('item-grid');
+    const items = menusData[idx]?.items || [];
+
+    grid.innerHTML = items.length
+        ? items.map(it => `
+            <div class="item-card" onclick="handleItem(${it.id}, '${esc(it.nameEn)}', '${esc(it.price)}')">
+                <div class="item-en">${it.nameEn}</div>
+                <div class="item-ar">${it.nameAr}</div>
+                <div class="item-price">${fmtPrice(it.price)}</div>
+            </div>`).join('')
+        : '<div style="grid-column:1/-1;text-align:center;color:#444;padding:40px;">No items</div>';
+}
+
+function esc(s) { return s.replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+function fmtPrice(p) {
+    if (!p) return '—';
+    if (p.includes('/')) return p.split('/').map(x=>x.trim()+'EGP').join(' / ');
+    return p + ' EGP';
+}
+
+// ──────────────────────────────
+// CART
+// ──────────────────────────────
+function handleItem(id, name, priceStr) {
+    if (!currentShift) { toast('Open a shift first!','err'); return; }
+    if (priceStr.includes('/')) {
+        openPriceSelect(id, name, priceStr);
+    } else {
+        addToCart(id, name, parseFloat(priceStr));
+    }
+}
+
+function openPriceSelect(id, name, priceStr) {
+    const parts = priceStr.split('/').map(p=>p.trim());
+    let labels = ['Standard','Large'];
+    if (name.includes('S/D')) labels = ['Single','Double'];
+    else if (name.includes('M/L')) labels = ['Medium','Large'];
+
+    document.getElementById('price-title').innerText = name;
+    document.getElementById('price-options').innerHTML = parts.map((p,i)=>`
+        <div class="price-option" onclick="addFromSize(${id},'${esc(name)} (${labels[i]||'Sz '+(i+1)})',${p})">
+            <span class="size-label">${labels[i]||'Size '+(i+1)}</span>
+            <span class="size-price">${p} EGP</span>
+        </div>`).join('');
+    openOv('ov-price');
+}
+
+function addFromSize(id, name, p) {
+    closeOv('ov-price');
+    addToCart(id, name, p);
+}
+
+function addToCart(id, name, price) {
+    const exist = cart.find(c=>c.item_id===id && c.name===name);
+    if (exist) { exist.qty++; }
+    else { cart.push({ item_id:id, name, price, qty:1, notes:'' }); }
+    renderCart();
+    // On tablet open cart drawer
+    if(window.innerWidth<=768 && !cartOpen) toggleCartDrawerOpen(true);
+}
+
+function changeQty(idx, delta) {
+    cart[idx].qty += delta;
+    if (cart[idx].qty <= 0) cart.splice(idx, 1);
+    renderCart();
+}
+function removeItem(idx) { cart.splice(idx, 1); renderCart(); }
+
+function openNote(idx) {
+    document.getElementById('note-idx').value = idx;
+    document.getElementById('note-input').value = cart[idx].notes || '';
+    openOv('ov-note');
+    setTimeout(()=>document.getElementById('note-input').focus(), 150);
+}
+function saveNote() {
+    const idx = document.getElementById('note-idx').value;
+    cart[idx].notes = document.getElementById('note-input').value.trim();
+    closeOv('ov-note');
+    renderCart();
+}
+
+function voidCart() {
+    if(cart.length===0) return;
+    if(confirm('Clear the entire order?')) {
+        cart=[]; discount=0; heldOrderId=null; renderCart();
+    }
+}
+
+function renderCart() {
+    const container = document.getElementById('cart-items');
+    const empty = document.getElementById('cart-empty');
+    const count = cart.reduce((s,c)=>s+c.qty,0);
+    const subtotal = cart.reduce((s,c)=>s+c.price*c.qty,0);
+    if(discount > subtotal) discount = subtotal;
+    const total = subtotal - discount;
+
+    document.getElementById('cart-count').innerText = count;
+    document.getElementById('subtotal').innerText = subtotal.toFixed(2)+' EGP';
+    document.getElementById('grand-total').innerText = total.toFixed(2)+' EGP';
+
+    if(discount>0) {
+        document.getElementById('discount-row').style.display='flex';
+        document.getElementById('discount-val').innerText = '— '+discount.toFixed(2)+' EGP';
+    } else {
+        document.getElementById('discount-row').style.display='none';
+    }
+
+    const pay = document.getElementById('btn-pay');
+    pay.disabled = cart.length===0;
+    pay.innerText = cart.length===0 ? 'PAY NOW' : `PAY ${total.toFixed(2)} EGP`;
+
+    if(cart.length===0) {
+        container.innerHTML = '';
+        container.appendChild(empty);
+        return;
+    }
+
+    if(empty.parentNode === container) container.removeChild(empty);
+
+    container.innerHTML = cart.map((item,i)=>`
+        <div class="cart-item">
+            <div class="ci-top">
+                <div class="ci-name">${item.name}</div>
+                <div class="ci-total">${(item.price*item.qty).toFixed(2)}</div>
+            </div>
+            ${item.notes?`<div class="ci-note"><i class="fas fa-comment-dots"></i> ${item.notes}</div>`:''}
+            <div class="ci-bottom">
+                <div class="qty-ctrl">
+                    <button class="qty-btn" onclick="changeQty(${i},-1)"><i class="fas fa-minus"></i></button>
+                    <div class="qty-val">${item.qty}</div>
+                    <button class="qty-btn" onclick="changeQty(${i},1)"><i class="fas fa-plus"></i></button>
+                </div>
+                <div class="ci-actions">
+                    <button class="ci-act-btn" onclick="openNote(${i})"><i class="fas fa-pen"></i> Note</button>
+                    <button class="ci-act-btn del" onclick="removeItem(${i})"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>`).join('');
+}
+
+// ──────────────────────────────
+// DISCOUNT
+// ──────────────────────────────
+function openDiscount() {
+    document.getElementById('disc-input').value = discount||'';
+    openOv('ov-discount');
+    setTimeout(()=>document.getElementById('disc-input').focus(), 150);
+}
+function applyDiscount() {
+    const v = parseFloat(document.getElementById('disc-input').value)||0;
+    const sub = cart.reduce((s,c)=>s+c.price*c.qty,0);
+    if(v>sub) { toast('Discount exceeds subtotal','err'); return; }
+    discount=v;
+    closeOv('ov-discount');
+    renderCart();
+    toast(`Discount applied: ${v.toFixed(2)} EGP`);
+}
+
+// ──────────────────────────────
+// HOLD ORDER
+// ──────────────────────────────
+async function holdOrder() {
+    if(cart.length===0) { toast('Cart is empty','err'); return; }
+    if(!currentShift) { toast('No open shift','err'); return; }
+    await submitOrder('held');
+}
+async function openHeld() {
+    openOv('ov-held');
+    const list = document.getElementById('held-list');
+    list.innerHTML='<div style="text-align:center;color:#555;padding:20px;"><i class="fas fa-spinner fa-spin"></i></div>';
+    try {
+        const res = await fetch(`${API}/orders/active`, { headers: authH() });
+        const d = await res.json();
+        const held = d.filter(o=>o.status==='held');
+        if(held.length===0) { list.innerHTML='<p style="text-align:center;color:#555;padding:20px;">No held orders</p>'; return; }
+        list.innerHTML = held.map(o=>`
+            <div class="held-card">
+                <div>
+                    <div class="hc-num">#${o.id}</div>
+                    <div class="hc-items">${o.items.map(i=>`${i.qty}× ${i.name}`).join(', ')}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="hc-total">${o.total.toFixed(2)} EGP</div>
+                    <button class="btn-primary" style="padding:8px 14px;font-size:0.85rem;" onclick="resumeHeld(${o.id})">Resume</button>
+                </div>
+            </div>`).join('');
+    } catch { list.innerHTML='<p style="color:var(--red);text-align:center;">Failed to load</p>'; }
+}
+async function resumeHeld(id) {
+    const res = await fetch(`${API}/orders/active`, { headers: authH() });
+    const d = await res.json();
+    const order = d.find(o=>o.id===id);
+    if(!order) return;
+    cart = order.items.map(i=>({ item_id:i.item_id, name:i.name, price:i.price, qty:i.qty, notes:i.notes||'' }));
+    discount = order.discount_amount||0;
+    heldOrderId = order.id;
+    renderCart();
+    closeOv('ov-held');
+    toast(`Loaded order #${id}`);
+}
+
+// ──────────────────────────────
+// PAYMENT
+// ──────────────────────────────
+function openPayment() {
+    const sub = cart.reduce((s,c)=>s+c.price*c.qty,0);
+    const total = sub - discount;
+    document.getElementById('pay-due').innerText = total.toFixed(2)+' EGP';
+    document.getElementById('received').value='';
+    document.getElementById('change-val').innerText='0.00 EGP';
+    document.getElementById('change-box').classList.remove('over');
+    payMethod='Cash';
+    document.getElementById('pm-cash').classList.add('active');
+    document.getElementById('pm-card').classList.remove('active');
+    document.getElementById('cash-section').style.display='block';
+    document.getElementById('btn-confirm').disabled=false;
+    openOv('ov-payment');
+    setTimeout(()=>document.getElementById('received').focus(), 150);
+}
+
+function selectMethod(m) {
+    payMethod=m;
+    document.getElementById('pm-cash').classList.toggle('active', m==='Cash');
+    document.getElementById('pm-card').classList.toggle('active', m==='Card');
+    document.getElementById('cash-section').style.display = m==='Cash'?'block':'none';
+    document.getElementById('btn-confirm').disabled = false;
+}
+
+function calcChange() {
+    const due = parseFloat(document.getElementById('pay-due').innerText)||0;
+    const got = parseFloat(document.getElementById('received').value)||0;
+    const change = got-due;
+    const box = document.getElementById('change-box');
+    const val = document.getElementById('change-val');
+    const btn = document.getElementById('btn-confirm');
+    if(change>=0) {
+        val.innerText = change.toFixed(2)+' EGP';
+        val.parentElement.style.color='var(--green)';
+        box.classList.remove('over');
+        btn.disabled=false;
+    } else {
+        val.innerText = 'Insufficient';
+        box.classList.add('over');
+        btn.disabled=true;
+    }
+}
+
+async function confirmPay() {
+    if(payMethod==='Cash') {
+        const btn = document.getElementById('btn-confirm');
+        if(btn.disabled) return;
+    }
+    await submitOrder('paid', payMethod);
+    closeOv('ov-payment');
+}
+
+async function submitOrder(status, method=null) {
+    if(!currentShift) { toast('No active shift','err'); return; }
+    const sub = cart.reduce((s,c)=>s+c.price*c.qty,0);
+    const total = sub - discount;
+
+    const payload = {
+        shift_id: currentShift.id, status,
+        total, payment_method: method,
+        discount_amount: discount, notes:'', items: cart
+    };
+
+    try {
+        let url = `${API}/orders`;
+        let meth = 'POST';
+        if(heldOrderId && status==='paid') {
+            url = `${API}/orders/${heldOrderId}/status`;
+            meth = 'PUT';
+            payload.payment_method = method;
+        }
+        const res = await fetch(url, { method:meth, headers:authH(), body:JSON.stringify(payload) });
+        const d = await res.json();
+        if(res.ok) {
+            if(status==='paid') toast(`✓ Order paid (${method})`);
+            else toast(`Order held`);
+            cart=[]; discount=0; heldOrderId=null;
+            renderCart();
+        } else { toast(d.message||d.error,'err'); }
+    } catch { toast('Connection failed','err'); }
+}
+
+// ──────────────────────────────
+// TABLET DRAWER
+// ──────────────────────────────
+function toggleCartDrawer() {
+    if(window.innerWidth > 768) return;
+    toggleCartDrawerOpen(!cartOpen);
+}
+function toggleCartDrawerOpen(open) {
+    cartOpen = open;
+    document.getElementById('cart-area').classList.toggle('open', open);
+}
+
+// ──────────────────────────────
+// MODAL UTILS
+// ──────────────────────────────
+function openOv(id) { document.getElementById(id).classList.add('show'); }
+function closeOv(id) { document.getElementById(id).classList.remove('show'); }
+
+// Close overlay on backdrop click
+document.querySelectorAll('.overlay').forEach(ov=>{
+    ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('show'); });
+});
+
+// ──────────────────────────────
+// TOASTS
+// ──────────────────────────────
+function toast(msg, type='ok') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className=`toast ${type}`;
+    t.innerText=msg;
+    c.appendChild(t);
+    setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity 0.4s'; setTimeout(()=>t.remove(),400); },2200);
+}
+
+// ──────────────────────────────
+// KEYBOARD SHORTCUTS
+// ──────────────────────────────
+document.addEventListener('keydown', e=>{
+    // ESC closes overlays
+    if(e.key==='Escape') {
+        document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
+    }
+});
+
+// ──────────────────────────────
+// INIT
+// ──────────────────────────────
+window.onload = () => {
+    if(token) {
+        verifyToken();
+    }
+    // Initial cart render
+    renderCart();
+};
+</script>
+</body>
+</html>

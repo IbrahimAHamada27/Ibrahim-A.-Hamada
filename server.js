@@ -5,6 +5,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -28,6 +29,33 @@ function requireAuth(req, res, next) {
     next();
 }
 
+const JWT_SECRET = process.env.JWT_SECRET || 'coffee-duck-pos-secret-2025';
+
+function requireRoles(roles) {
+    return (req, res, next) => {
+        // HMAC Override for backward compatibility with admin-dashboard
+        const hmacToken = req.headers['x-auth-token'];
+        if (hmacToken && hmacToken === generateToken(ADMIN_USERNAME)) {
+            req.user = { id: 0, username: ADMIN_USERNAME, role: 'admin' };
+            if (roles.length && !roles.includes('admin')) return res.status(403).json({ success: false, message: 'Forbidden' });
+            return next();
+        }
+
+        const authHeader = req.headers['authorization'];
+        if (!authHeader) return res.status(401).json({ success: false, message: 'No token provided' });
+        
+        const token = authHeader.split(' ')[1];
+        jwt.verify(token, JWT_SECRET, (err, user) => {
+            if (err) return res.status(401).json({ success: false, message: 'Invalid token' });
+            if (roles.length && !roles.includes(user.role)) {
+                return res.status(403).json({ success: false, message: 'Forbidden' });
+            }
+            req.user = user;
+            next();
+        });
+    };
+}
+
 // ===================== DATABASE =====================
 const db = new sqlite3.Database(path.join(__dirname, 'database.sqlite'));
 db.run('PRAGMA foreign_keys = ON');
@@ -44,6 +72,32 @@ db.serialize(() => {
     )`);
     db.run(`ALTER TABLE corners ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
     db.run(`ALTER TABLE items ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
+
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, pin TEXT UNIQUE, role TEXT
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS shifts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, opened_at DATETIME DEFAULT CURRENT_TIMESTAMP, closed_at DATETIME, opening_cash REAL, closing_cash REAL, status TEXT DEFAULT 'open'
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, shift_id INTEGER, status TEXT DEFAULT 'open', total REAL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, payment_method TEXT, discount_amount REAL DEFAULT 0, notes TEXT, FOREIGN KEY(shift_id) REFERENCES shifts(id)
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, item_id INTEGER, name TEXT, price REAL, qty INTEGER, notes TEXT, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS cash_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, shift_id INTEGER, type TEXT, amount REAL, reason TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(shift_id) REFERENCES shifts(id)
+    )`);
+
+    db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
+        if (!err && row.count === 0) {
+            console.log('Seeding default POS users...');
+            const adminHash = crypto.createHash('sha256').update('admin123').digest('hex');
+            const cashierHash = crypto.createHash('sha256').update('cashier123').digest('hex');
+            db.run('INSERT INTO users (username, password_hash, pin, role) VALUES (?, ?, ?, ?)', ['admin', adminHash, '0000', 'admin']);
+            db.run('INSERT INTO users (username, password_hash, pin, role) VALUES (?, ?, ?, ?)', ['cashier', cashierHash, '1234', 'cashier']);
+        }
+    });
 
     db.get('SELECT COUNT(*) as count FROM corners', (err, row) => {
         if (!err && row.count === 0) {
@@ -197,9 +251,163 @@ app.delete('/api/items/:id', requireAuth, (req, res) => {
     });
 });
 
+// ===================== POS API ENDPOINTS =====================
+
+// POS Login
+app.post('/api/pos/login', loginLimiter, (req, res) => {
+    const { pin, password, username } = req.body;
+    let query, params;
+    
+    if (pin) {
+        query = 'SELECT * FROM users WHERE pin = ?';
+        params = [pin];
+    } else if (username && password) {
+        const hash = crypto.createHash('sha256').update(password).digest('hex');
+        query = 'SELECT * FROM users WHERE username = ? AND password_hash = ?';
+        params = [username, hash];
+    } else {
+        return res.status(400).json({ success: false, message: 'Invalid login format' });
+    }
+
+    db.get(query, params, (err, user) => {
+        if (err || !user) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+        res.json({ success: true, token, user: { id: user.id, username: user.username, role: user.role } });
+    });
+});
+
+app.get('/api/pos/verify', requireRoles([]), (req, res) => {
+    res.json({ success: true, user: req.user });
+});
+
+// Users Management (Admin)
+app.get('/api/users', requireRoles(['admin']), (req, res) => {
+    db.all('SELECT id, username, role, pin FROM users', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/users', requireRoles(['admin']), (req, res) => {
+    const { username, password, pin, role } = req.body;
+    const hash = crypto.createHash('sha256').update(password).digest('hex');
+    db.run('INSERT INTO users (username, password_hash, pin, role) VALUES (?, ?, ?, ?)', [username, hash, pin, role], function(err) {
+        if (err) return res.status(400).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+app.delete('/api/users/:id', requireRoles(['admin']), (req, res) => {
+    db.run('DELETE FROM users WHERE id = ?', [req.params.id], err => {
+        if (err) return res.status(400).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Shifts
+app.post('/api/shifts/open', requireRoles(['admin', 'cashier']), (req, res) => {
+    const { opening_cash } = req.body;
+    db.get('SELECT * FROM shifts WHERE status = "open"', [], (err, shift) => {
+        if (shift) return res.status(400).json({ success: false, message: 'A shift is already open' });
+        
+        db.run('INSERT INTO shifts (opening_cash) VALUES (?)', [opening_cash || 0], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true, shift_id: this.lastID });
+        });
+    });
+});
+
+app.post('/api/shifts/close', requireRoles(['admin']), (req, res) => {
+    const { closing_cash } = req.body;
+    db.run('UPDATE shifts SET closed_at = CURRENT_TIMESTAMP, closing_cash = ?, status = "closed" WHERE status = "open"', [closing_cash || 0], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(400).json({ success: false, message: 'No open shift found' });
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/shifts/current', requireRoles(['admin', 'cashier']), (req, res) => {
+    db.get('SELECT * FROM shifts WHERE status = "open"', [], (err, shift) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, shift: shift || null });
+    });
+});
+
+app.post('/api/shifts/cash-movement', requireRoles(['admin', 'cashier']), (req, res) => {
+    const { shift_id, type, amount, reason } = req.body;
+    db.run('INSERT INTO cash_movements (shift_id, type, amount, reason) VALUES (?, ?, ?, ?)', [shift_id, type, amount, reason], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+// Orders (POS)
+app.post('/api/orders', requireRoles(['admin', 'cashier']), (req, res) => {
+    const { shift_id, status, total, payment_method, discount_amount, notes, items } = req.body;
+    
+    db.run('INSERT INTO orders (shift_id, status, total, payment_method, discount_amount, notes) VALUES (?, ?, ?, ?, ?, ?)', 
+        [shift_id, status || 'open', total, payment_method, discount_amount || 0, notes], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        const orderId = this.lastID;
+        
+        if (items && items.length > 0) {
+            const stmt = db.prepare('INSERT INTO order_items (order_id, item_id, name, price, qty, notes) VALUES (?, ?, ?, ?, ?, ?)');
+            items.forEach(item => {
+                stmt.run(orderId, item.item_id, item.name, item.price, item.qty, item.notes);
+            });
+            stmt.finalize();
+        }
+        res.json({ success: true, order_id: orderId });
+    });
+});
+
+app.get('/api/orders/active', requireRoles(['admin', 'cashier']), (req, res) => {
+    db.all('SELECT * FROM orders WHERE status IN ("open", "held") ORDER BY id DESC', [], (err, orders) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        db.all('SELECT * FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE status IN ("open", "held"))', [], (err, items) => {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            const ordersWithItems = orders.map(o => ({
+                ...o,
+                items: items.filter(i => i.order_id === o.id)
+            }));
+            res.json(ordersWithItems);
+        });
+    });
+});
+
+app.put('/api/orders/:id/status', requireRoles(['admin', 'cashier']), (req, res) => {
+    const { status, payment_method } = req.body;
+    db.run('UPDATE orders SET status = ?, payment_method = COALESCE(?, payment_method) WHERE id = ?', [status, payment_method, req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Z-Report (Admin only)
+app.get('/api/shifts/:id/report', requireRoles(['admin']), (req, res) => {
+    const shiftId = req.params.id;
+    db.get('SELECT * FROM shifts WHERE id = ?', [shiftId], (err, shift) => {
+        if (err || !shift) return res.status(404).json({ error: 'Shift not found' });
+        
+        db.all('SELECT status, COUNT(*) as count, SUM(total) as totalSum FROM orders WHERE shift_id = ? GROUP BY status', [shiftId], (err, orderStats) => {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            db.all('SELECT type, SUM(amount) as totalSum FROM cash_movements WHERE shift_id = ? GROUP BY type', [shiftId], (err, movementStats) => {
+                if (err) return res.status(500).json({ error: err.message });
+                
+                res.json({ shift, orderStats, movementStats });
+            });
+        });
+    });
+});
+
 // ===================== HTML ROUTES =====================
 app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+app.get('/cashier.html', (req, res) => res.sendFile(path.join(__dirname, 'cashier.html')));
+app.get('/cashier', (req, res) => res.sendFile(path.join(__dirname, 'cashier.html')));
 app.get('/admin-dashboard.html', (req, res) => res.sendFile(path.join(__dirname, 'admin-dashboard.html')));
 app.get('/admin-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'admin-dashboard.html')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
