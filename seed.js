@@ -1,30 +1,28 @@
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'database.sqlite'));
-db.pragma('foreign_keys = ON');
+const db = new sqlite3.Database(path.join(__dirname, 'database.sqlite'));
 
 // Create tables
-db.exec(`
-    CREATE TABLE IF NOT EXISTS corners (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        imageName TEXT,
-        nameEn TEXT,
-        nameAr TEXT
-    );
-    CREATE TABLE IF NOT EXISTS items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cornerId INTEGER,
-        nameEn TEXT,
-        nameAr TEXT,
-        price TEXT,
-        FOREIGN KEY(cornerId) REFERENCES corners(id) ON DELETE CASCADE
-    );
-`);
+db.serialize(() => {
+    db.run('PRAGMA foreign_keys = OFF');
+    db.run(`
+        CREATE TABLE IF NOT EXISTS corners (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            imageName TEXT, nameEn TEXT, nameAr TEXT, sortOrder INTEGER DEFAULT 0
+        )
+    `);
+    db.run(`
+        CREATE TABLE IF NOT EXISTS items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cornerId INTEGER, nameEn TEXT, nameAr TEXT, price TEXT, sortOrder INTEGER DEFAULT 0,
+            FOREIGN KEY(cornerId) REFERENCES corners(id) ON DELETE CASCADE
+        )
+    `);
 
-// Clear existing data
-db.prepare('DELETE FROM items').run();
-db.prepare('DELETE FROM corners').run();
+    // Clear existing data
+    db.run('DELETE FROM items');
+    db.run('DELETE FROM corners');
 
 const cornersData = [
     {
@@ -205,15 +203,38 @@ const cornersData = [
     },
 ];
 
-const insertCorner = db.prepare('INSERT INTO corners (imageName, nameEn, nameAr) VALUES (?, ?, ?)');
-const insertItem = db.prepare('INSERT INTO items (cornerId, nameEn, nameAr, price) VALUES (?, ?, ?, ?)');
+    const insertCorner = db.prepare('INSERT INTO corners (imageName, nameEn, nameAr) VALUES (?, ?, ?)');
+    const insertItem = db.prepare('INSERT INTO items (cornerId, nameEn, nameAr, price) VALUES (?, ?, ?, ?)');
 
-for (const corner of cornersData) {
-    const info = insertCorner.run(corner.imageName, corner.nameEn, corner.nameAr);
-    for (const item of corner.items) {
-        insertItem.run(info.lastInsertRowid, item[0], item[1], item[2]);
-    }
-}
+    const insertSequentially = (cornerIndex) => {
+        if (cornerIndex >= cornersData.length) {
+            insertCorner.finalize();
+            insertItem.finalize();
+            console.log(`Done! Seeded ${cornersData.length} corners with all items.`);
+            return;
+        }
+        
+        const c = cornersData[cornerIndex];
+        insertCorner.run(c.imageName, c.nameEn, c.nameAr, function(err) {
+            if (err) throw err;
+            const cornerId = this.lastID;
+            
+            if (c.items.length === 0) {
+                insertSequentially(cornerIndex + 1);
+            } else {
+                let itemsCount = 0;
+                c.items.forEach(item => {
+                    insertItem.run(cornerId, item[0], item[1], item[2], (err) => {
+                        if (err) throw err;
+                        itemsCount++;
+                        if (itemsCount === c.items.length) {
+                            insertSequentially(cornerIndex + 1);
+                        }
+                    });
+                });
+            }
+        });
+    };
 
-db.close();
-console.log(`Done! Seeded ${cornersData.length} corners with all items.`);
+    insertSequentially(0);
+});
