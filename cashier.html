@@ -776,27 +776,16 @@
     <div class="login-card">
         <div class="login-logo"><i class="fas fa-mug-hot"></i></div>
         <div class="login-title">Coffee Duck</div>
-        <div class="login-sub">Point of Sale — Enter your PIN</div>
-        <div class="pin-dots">
-            <div class="pin-dot" id="dot-0"></div>
-            <div class="pin-dot" id="dot-1"></div>
-            <div class="pin-dot" id="dot-2"></div>
-            <div class="pin-dot" id="dot-3"></div>
+        <div class="login-sub">Cashier Login</div>
+        <div class="field" style="text-align:left;">
+            <label>Username</label>
+            <input type="text" id="login-username" placeholder="cashier1" required onkeypress="if(event.key==='Enter') document.getElementById('login-password').focus()">
         </div>
-        <div class="pin-grid">
-            <button class="pin-key" onclick="addPin('1')">1</button>
-            <button class="pin-key" onclick="addPin('2')">2</button>
-            <button class="pin-key" onclick="addPin('3')">3</button>
-            <button class="pin-key" onclick="addPin('4')">4</button>
-            <button class="pin-key" onclick="addPin('5')">5</button>
-            <button class="pin-key" onclick="addPin('6')">6</button>
-            <button class="pin-key" onclick="addPin('7')">7</button>
-            <button class="pin-key" onclick="addPin('8')">8</button>
-            <button class="pin-key" onclick="addPin('9')">9</button>
-            <button class="pin-key clear" onclick="clearPin()"><i class="fas fa-delete-left"></i></button>
-            <button class="pin-key" onclick="addPin('0')">0</button>
-            <button class="pin-key enter" onclick="submitPin()"><i class="fas fa-check"></i></button>
+        <div class="field" style="text-align:left;">
+            <label>Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" required onkeypress="if(event.key==='Enter') submitLogin()">
         </div>
+        <button class="btn-primary" style="width:100%; margin-top:10px;" onclick="submitLogin()">LOGIN</button>
         <div class="login-err" id="login-err"></div>
     </div>
 </div>
@@ -809,13 +798,14 @@
         <div class="logo"><i class="fas fa-mug-hot"></i> Coffee Duck</div>
         <div class="spacer"></div>
         <div class="user-badge" id="user-badge"><i class="fas fa-user-circle"></i> <span id="user-name">—</span></div>
-        <div class="shift-badge" id="shift-badge" style="cursor:pointer;" onclick="openShiftMenu()"><i class="fas fa-clock"></i> <span id="shift-label">Loading…</span></div>
         <!-- Cashier Stats Mini -->
         <div id="cashier-stats-mini" style="display:none;gap:8px;align-items:center;" class="user-badge">
             <span style="color:var(--gold);font-weight:700;" id="stat-orders">0</span><span style="color:#666;font-size:0.75rem;">orders</span>
             <span style="color:#4CAF50;font-weight:700;" id="stat-sales">0</span><span style="color:#666;font-size:0.75rem;">EGP</span>
         </div>
         <div class="icon-btn" title="Orders History" onclick="openOrders()"><i class="fas fa-receipt"></i></div>
+        <div class="icon-btn" title="Add Cash" onclick="openCashModal('in')"><i class="fas fa-money-bill-wave"></i></div>
+        <div class="icon-btn" title="Remove Cash" onclick="openCashModal('out')"><i class="fas fa-hand-holding-usd"></i></div>
         <div class="icon-btn" title="Logout" onclick="logout()"><i class="fas fa-power-off"></i></div>
     </header>
 
@@ -829,24 +819,38 @@
         </div>
     </div>
 
-    <!-- Cart Panel -->
-    <div class="cart-area" id="cart-area">
-        <div class="cart-head" id="cart-head" onclick="toggleCartDrawer()">
-            <h2>
-                <i class="fas fa-shopping-basket" style="color:var(--gold)"></i>
-                Order
-                <span class="cart-count" id="cart-count">0</span>
-            </h2>
-            <button class="btn-void" onclick="event.stopPropagation(); voidCart()">
-                <i class="fas fa-trash"></i> Void
+    <!-- Cart Panel / Checkout -->
+    <div class="cart-panel" id="cart-panel">
+        <div style="background:#111; padding:8px; display:flex; gap:8px; align-items:center; overflow-x:auto;" id="order-tabs">
+            <!-- Rendered by JS -->
+        </div>
+        <div style="background:#1a1a1a; padding:10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; gap:10px;">
+            <div style="display:flex; gap:8px; flex:1;">
+                <select id="order-type-select" onchange="updateOrderType(this.value)" style="background:#333; color:#fff; border:none; padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer; outline:none;">
+                    <option value="Dine-In">🍽️ Dine-In (صالة)</option>
+                    <option value="Takeaway">🏃 Takeaway</option>
+                    <option value="Delivery">🛵 Delivery</option>
+                </select>
+                <input type="text" id="order-meta-input" placeholder="Table # / Name / Address" onchange="updateOrderMeta(this.value)" style="flex:1; background:#222; border:1px solid #444; border-radius:6px; padding:8px 12px; color:#fff; outline:none;">
+            </div>
+            <button onclick="voidCurrentOrder()" style="background:none; color:var(--red); border:none; font-size:1.1rem; cursor:pointer;" title="Delete Order">
+                <i class="fas fa-trash"></i>
             </button>
         </div>
 
-        <div class="cart-items" id="cart-items">
-            <div class="cart-empty" id="cart-empty">
-                <i class="fas fa-cart-plus"></i>
-                <span>Tap an item to add</span>
+        <div class="cart-header">
+            <h2>Current Order <span>(<span id="cart-count">0</span> items)</span></h2>
+            <div class="cart-actions">
+                <button class="btn-icon" onclick="toggleCartDrawerOpen(false)"><i class="fas fa-times"></i></button>
             </div>
+        </div>
+
+        <div class="cart-items-wrapper">
+            <div id="cart-empty" style="text-align:center;color:#666;padding:40px 20px;">
+                <i class="fas fa-shopping-basket" style="font-size:3rem;margin-bottom:15px;opacity:0.5;"></i>
+                <p>Select items from the menu to add them to your cart.</p>
+            </div>
+            <div class="cart-items" id="cart-items"></div>
         </div>
 
         <div class="cart-footer">
@@ -1030,38 +1034,27 @@
 const API = '/api';
 let token = localStorage.getItem('posToken');
 let currentUser = null;
-let currentShift = null;
 let menusData = [];
-let cart = [];
-let discount = 0;
-let heldOrderId = null;
+
+// Tabbed Orders State
+let activeOrders = [{ id: Date.now(), title: 'Order 1', type: 'Dine-In', meta: '', cart: [], discount: 0, notes: '', heldOrderId: null }];
+let activeIdx = 0;
+let orderCounter = 1;
+
 let payMethod = 'Cash';
 let cartOpen = false; // for tablet drawer
 
 // ──────────────────────────────
 // AUTH
 // ──────────────────────────────
-let pinStr = '';
-function addPin(d) {
-    if (pinStr.length >= 4) return;
-    pinStr += d;
-    updatePinDots();
-    if (pinStr.length === 4) setTimeout(submitPin, 120);
-}
-function clearPin() {
-    pinStr = pinStr.slice(0, -1);
-    updatePinDots();
-}
-function updatePinDots() {
-    for(let i=0;i<4;i++) {
-        document.getElementById(`dot-${i}`).classList.toggle('filled', i < pinStr.length);
-    }
-}
-async function submitPin() {
+async function submitLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    if (!username || !password) return;
     try {
         const res = await fetch(`${API}/pos/login`, {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ pin: pinStr })
+            body: JSON.stringify({ username, password })
         });
         const data = await res.json();
         if (res.ok && data.success) {
@@ -1070,13 +1063,11 @@ async function submitPin() {
             currentUser = data.user;
             initPOS();
         } else {
-            document.getElementById('login-err').innerText = '✖ Incorrect PIN. Try again.';
-            pinStr = ''; updatePinDots();
+            document.getElementById('login-err').innerText = '✖ ' + (data.message || 'Error');
             setTimeout(()=>document.getElementById('login-err').innerText='', 2000);
         }
     } catch {
         document.getElementById('login-err').innerText = '✖ Connection error';
-        pinStr = ''; updatePinDots();
     }
 }
 async function verifyToken() {
@@ -1101,8 +1092,8 @@ function authH() {
 
 async function initPOS() {
     document.getElementById('user-name').innerText = currentUser.username;
-    await checkShift();
     await loadMenu();
+    renderCart();
     loadCashierStats();
 }
 
@@ -1120,129 +1111,8 @@ async function loadCashierStats() {
     } catch {}
 }
 
-async function checkShift() {
-    try {
-        const res = await fetch(`${API}/shifts/current`, { headers: authH() });
-        const d = await res.json();
-        currentShift = d.shift || null;
-        const badge = document.getElementById('shift-badge');
-        const label = document.getElementById('shift-label');
-        if (currentShift) {
-            label.innerText = `Shift #${currentShift.id}`;
-            badge.classList.remove('closed');
-        } else {
-            label.innerText = 'No Shift → Tap';
-            badge.classList.add('closed');
-        }
-    } catch {}
-}
-
-async function openShiftMenu() {
-    openOv('ov-shift-menu');
-    const body = document.getElementById('shift-menu-body');
-    if (currentShift) {
-        // Show stats + close option
-        try {
-            const res = await fetch(`${API}/cashier/stats`, { headers: authH() });
-            const d = await res.json();
-            const s = d.stats || {};
-            body.innerHTML = `
-                <div style="background:#1a1a1a;border-radius:10px;padding:16px;margin-bottom:16px;">
-                    <div style="color:var(--gold);font-weight:700;font-size:1rem;margin-bottom:12px;"><i class="fas fa-chart-line"></i> My Stats Today</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
-                            <div style="color:#aaa;font-size:0.75rem;">Paid Orders</div>
-                            <div style="color:#3a7bd5;font-size:1.5rem;font-weight:700;">${s.paidOrders||0}</div>
-                        </div>
-                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
-                            <div style="color:#aaa;font-size:0.75rem;">Total Sales</div>
-                            <div style="color:#4CAF50;font-size:1.5rem;font-weight:700;">${(s.totalSales||0).toFixed(0)}<span style="font-size:0.75rem;"> EGP</span></div>
-                        </div>
-                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
-                            <div style="color:#aaa;font-size:0.75rem;">Cash</div>
-                            <div style="color:#26a65b;font-size:1.2rem;font-weight:700;">${(s.cashSales||0).toFixed(0)} EGP</div>
-                        </div>
-                        <div style="text-align:center;background:#222;border-radius:8px;padding:12px;">
-                            <div style="color:#aaa;font-size:0.75rem;">Card</div>
-                            <div style="color:#9b59b6;font-size:1.2rem;font-weight:700;">${(s.cardSales||0).toFixed(0)} EGP</div>
-                        </div>
-                    </div>
-                </div>
-                <div style="background:#1a1a1a;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #333;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                        <div>
-                            <div style="color:#fff;font-weight:600;">Shift #${currentShift.id}</div>
-                            <div style="color:#666;font-size:0.8rem;">Opened: ${new Date(currentShift.opened_at).toLocaleTimeString('ar-EG')}</div>
-                        </div>
-                        <div style="display:flex;gap:8px;">
-                            <button class="btn-primary" style="background:#4CAF50;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.85rem;" onclick="openCashModal('in')">+ In</button>
-                            <button class="btn-primary" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.85rem;" onclick="openCashModal('out')">- Out</button>
-                        </div>
-                    </div>
-                    <!-- Movements List -->
-                    <div id="shift-movements-list" style="max-height:100px;overflow-y:auto;font-size:0.85rem;color:#aaa;">Loading movements...</div>
-                </div>
-                <button class="btn-primary" style="width:100%;background:var(--red);color:#fff;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:700;cursor:pointer;" onclick="closeMyShift()">
-                    <i class="fas fa-stop-circle"></i> Close My Shift
-                </button>`;
-            
-            // Load movements asynchronously
-            fetch(`${API}/shifts/current/movements`, { headers: authH() })
-                .then(r => r.json())
-                .then(movs => {
-                    const mList = document.getElementById('shift-movements-list');
-                    if (movs.length === 0) mList.innerHTML = 'No cash movements yet.';
-                    else mList.innerHTML = movs.map(m => `
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #333;">
-                            <span>${m.type === 'in' ? '<span style="color:#4CAF50;">[+IN]</span>' : '<span style="color:#ff4d4d;">[-OUT]</span>'} ${m.reason}</span>
-                            <span>${m.amount} EGP</span>
-                        </div>
-                    `).join('');
-                });
-        } catch { body.innerHTML = '<p style="color:var(--red)">Failed to load stats</p>'; }
-    } else {
-        body.innerHTML = `
-            <p style="color:#aaa;text-align:center;margin-bottom:20px;">You don't have an open shift.<br>Open one to start taking orders.</p>
-            <div class="field"><label style="color:var(--text-dim);">Opening Cash in Drawer (EGP)</label><input type="number" id="open-cash-input" min="0" step="1" value="0" style="background:#111;border:1.5px solid #333;color:#fff;border-radius:8px;padding:12px;width:100%;font-size:1rem;"></div>
-            <button class="btn-primary" style="width:100%;background:#4CAF50;color:#fff;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:10px;" onclick="openMyShift()">
-                <i class="fas fa-play-circle"></i> Open My Shift
-            </button>`;
-    }
-}
-
-async function openMyShift() {
-    const cash = parseFloat(document.getElementById('open-cash-input')?.value) || 0;
-    try {
-        const res = await fetch(`${API}/shifts/open`, { method:'POST', headers: authH(), body: JSON.stringify({ opening_cash: cash }) });
-        const d = await res.json();
-        if (d.success) {
-            currentShift = d.shift;
-            closeOv('ov-shift-menu');
-            await checkShift();
-            toast('✅ Shift opened!');
-            loadCashierStats();
-        } else { toast(d.message || 'Failed', 'err'); }
-    } catch { toast('Connection error','err'); }
-}
-
-async function closeMyShift() {
-    if (!confirm('Close your shift? You will not be able to take new orders.')) return;
-    try {
-        const res = await fetch(`${API}/shifts/close`, { method:'POST', headers: authH(), body: JSON.stringify({ closing_cash: 0 }) });
-        const d = await res.json();
-        if (d.success) {
-            currentShift = null;
-            closeOv('ov-shift-menu');
-            await checkShift();
-            toast('Shift closed');
-            loadCashierStats();
-        } else { toast(d.message || 'Failed','err'); }
-    } catch { toast('Connection error','err'); }
-}
-
 let activeCashType = 'in';
 function openCashModal(type) {
-    if (!currentShift) return toast('Open a shift first', 'err');
     activeCashType = type;
     document.getElementById('cash-modal-title').innerText = type === 'in' ? 'Cash IN (إيداع)' : 'Cash OUT (سحب)';
     const btn = document.getElementById('btn-submit-cash');
@@ -1251,7 +1121,6 @@ function openCashModal(type) {
     btn.onclick = submitCashMovement;
     document.getElementById('cash-amount').value = '';
     document.getElementById('cash-reason').value = '';
-    closeOv('ov-shift-menu');
     openOv('modal-cash');
 }
 
@@ -1261,9 +1130,9 @@ async function submitCashMovement() {
     if (!amount || amount <= 0 || !reason) return toast('Please fill all fields', 'err');
     
     try {
-        const res = await fetch(`${API}/shifts/cash-movement`, {
+        const res = await fetch(`${API}/cash-movement`, {
             method: 'POST', headers: authH(),
-            body: JSON.stringify({ shift_id: currentShift.id, type: activeCashType, amount, reason })
+            body: JSON.stringify({ type: activeCashType, amount, reason })
         });
         const d = await res.json();
         if (d.success) {
@@ -1316,10 +1185,63 @@ function fmtPrice(p) {
 }
 
 // ──────────────────────────────
+// ACTIVE ORDERS TABS
+// ──────────────────────────────
+function renderTabs() {
+    const tabsContainer = document.getElementById('order-tabs');
+    tabsContainer.innerHTML = activeOrders.map((o, i) => `
+        <button onclick="switchOrder(${i})" style="padding:6px 12px; border-radius:6px; border:none; cursor:pointer; font-weight:bold; white-space:nowrap; ${i === activeIdx ? 'background:var(--gold); color:#000;' : 'background:#222; color:#aaa;'}">
+            ${o.title}
+        </button>
+    `).join('') + `
+        <button onclick="addNewOrder()" style="padding:6px 10px; border-radius:6px; border:none; cursor:pointer; background:#333; color:#fff;"><i class="fas fa-plus"></i></button>
+    `;
+    
+    // Sync order type select and meta
+    document.getElementById('order-type-select').value = activeOrders[activeIdx].type;
+    document.getElementById('order-meta-input').value = activeOrders[activeIdx].meta || '';
+}
+
+function switchOrder(idx) {
+    activeIdx = idx;
+    renderTabs();
+    renderCart();
+}
+
+function addNewOrder() {
+    orderCounter++;
+    activeOrders.push({ id: Date.now(), title: 'Order ' + orderCounter, type: 'Dine-In', meta: '', cart: [], discount: 0, notes: '', heldOrderId: null });
+    activeIdx = activeOrders.length - 1;
+    renderTabs();
+    renderCart();
+}
+
+function updateOrderType(val) {
+    activeOrders[activeIdx].type = val;
+}
+
+function updateOrderMeta(val) {
+    activeOrders[activeIdx].meta = val;
+}
+
+function voidCurrentOrder() {
+    if(confirm('Delete this active order tab completely?')) {
+        if (activeOrders.length === 1) {
+            // Reset to empty
+            activeOrders[0] = { id: Date.now(), title: 'Order ' + (++orderCounter), type: 'Dine-In', meta: '', cart: [], discount: 0, notes: '', heldOrderId: null };
+        } else {
+            activeOrders.splice(activeIdx, 1);
+            activeIdx = Math.max(0, activeIdx - 1);
+        }
+        renderTabs();
+        renderCart();
+    }
+}
+
+// ──────────────────────────────
 // CART
 // ──────────────────────────────
 function handleItem(id, name, priceStr) {
-    if (!currentShift) { toast('Open a shift first!','err'); return; }
     if (priceStr.includes('/')) {
         openPriceSelect(id, name, priceStr);
     } else {
@@ -1348,65 +1270,63 @@ function addFromSize(id, name, p) {
 }
 
 function addToCart(id, name, price) {
-    const exist = cart.find(c=>c.item_id===id && c.name===name);
+    const cOrder = activeOrders[activeIdx];
+    const exist = cOrder.cart.find(c=>c.item_id===id && c.name===name);
     if (exist) { exist.qty++; }
-    else { cart.push({ item_id:id, name, price, qty:1, notes:'' }); }
+    else { cOrder.cart.push({ item_id:id, name, price, qty:1, notes:'' }); }
     renderCart();
     // On tablet open cart drawer
     if(window.innerWidth<=768 && !cartOpen) toggleCartDrawerOpen(true);
 }
 
 function changeQty(idx, delta) {
-    cart[idx].qty += delta;
-    if (cart[idx].qty <= 0) cart.splice(idx, 1);
+    const cOrder = activeOrders[activeIdx];
+    cOrder.cart[idx].qty += delta;
+    if (cOrder.cart[idx].qty <= 0) cOrder.cart.splice(idx, 1);
     renderCart();
 }
-function removeItem(idx) { cart.splice(idx, 1); renderCart(); }
+function removeItem(idx) { activeOrders[activeIdx].cart.splice(idx, 1); renderCart(); }
 
 function openNote(idx) {
     document.getElementById('note-idx').value = idx;
-    document.getElementById('note-input').value = cart[idx].notes || '';
+    document.getElementById('note-input').value = activeOrders[activeIdx].cart[idx].notes || '';
     openOv('ov-note');
     setTimeout(()=>document.getElementById('note-input').focus(), 150);
 }
 function saveNote() {
     const idx = document.getElementById('note-idx').value;
-    cart[idx].notes = document.getElementById('note-input').value.trim();
+    activeOrders[activeIdx].cart[idx].notes = document.getElementById('note-input').value.trim();
     closeOv('ov-note');
     renderCart();
 }
 
-function voidCart() {
-    if(cart.length===0) return;
-    if(confirm('Clear the entire order?')) {
-        cart=[]; discount=0; heldOrderId=null; renderCart();
-    }
-}
-
 function renderCart() {
+    renderTabs(); // Ensure tabs are up to date
+    const cOrder = activeOrders[activeIdx];
     const container = document.getElementById('cart-items');
     const empty = document.getElementById('cart-empty');
-    const count = cart.reduce((s,c)=>s+c.qty,0);
-    const subtotal = cart.reduce((s,c)=>s+c.price*c.qty,0);
-    if(discount > subtotal) discount = subtotal;
-    const total = subtotal - discount;
+    
+    const count = cOrder.cart.reduce((s,c)=>s+c.qty,0);
+    const subtotal = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
+    if(cOrder.discount > subtotal) cOrder.discount = subtotal;
+    const total = subtotal - cOrder.discount;
 
     document.getElementById('cart-count').innerText = count;
     document.getElementById('subtotal').innerText = subtotal.toFixed(2)+' EGP';
     document.getElementById('grand-total').innerText = total.toFixed(2)+' EGP';
 
-    if(discount>0) {
+    if(cOrder.discount>0) {
         document.getElementById('discount-row').style.display='flex';
-        document.getElementById('discount-val').innerText = '— '+discount.toFixed(2)+' EGP';
+        document.getElementById('discount-val').innerText = '— '+cOrder.discount.toFixed(2)+' EGP';
     } else {
         document.getElementById('discount-row').style.display='none';
     }
 
     const pay = document.getElementById('btn-pay');
-    pay.disabled = cart.length===0;
-    pay.innerText = cart.length===0 ? 'PAY NOW' : `PAY ${total.toFixed(2)} EGP`;
+    pay.disabled = cOrder.cart.length===0;
+    pay.innerText = cOrder.cart.length===0 ? 'PAY NOW' : `PAY ${total.toFixed(2)} EGP`;
 
-    if(cart.length===0) {
+    if(cOrder.cart.length===0) {
         container.innerHTML = '';
         container.appendChild(empty);
         return;
@@ -1414,7 +1334,7 @@ function renderCart() {
 
     if(empty.parentNode === container) container.removeChild(empty);
 
-    container.innerHTML = cart.map((item,i)=>`
+    container.innerHTML = cOrder.cart.map((item,i)=>`
         <div class="cart-item">
             <div class="ci-top">
                 <div class="ci-name">${item.name}</div>
@@ -1439,15 +1359,16 @@ function renderCart() {
 // DISCOUNT
 // ──────────────────────────────
 function openDiscount() {
-    document.getElementById('disc-input').value = discount||'';
+    document.getElementById('disc-input').value = activeOrders[activeIdx].discount||'';
     openOv('ov-discount');
     setTimeout(()=>document.getElementById('disc-input').focus(), 150);
 }
 function applyDiscount() {
+    const cOrder = activeOrders[activeIdx];
     const v = parseFloat(document.getElementById('disc-input').value)||0;
-    const sub = cart.reduce((s,c)=>s+c.price*c.qty,0);
+    const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
     if(v>sub) { toast('Discount exceeds subtotal','err'); return; }
-    discount=v;
+    cOrder.discount=v;
     closeOv('ov-discount');
     renderCart();
     toast(`Discount applied: ${v.toFixed(2)} EGP`);
@@ -1456,9 +1377,10 @@ function applyDiscount() {
 // ──────────────────────────────
 // HOLD ORDER
 // ──────────────────────────────
+let loadedHeld = []; // To store fetched held orders
 async function holdOrder() {
-    if(cart.length===0) { toast('Cart is empty','err'); return; }
-    if(!currentShift) { toast('No open shift','err'); return; }
+    const cOrder = activeOrders[activeIdx];
+    if(cOrder.cart.length===0) { toast('Cart is empty','err'); return; }
     await submitOrder('held');
 }
 async function openHeld() {
@@ -1468,9 +1390,9 @@ async function openHeld() {
     try {
         const res = await fetch(`${API}/orders/active`, { headers: authH() });
         const d = await res.json();
-        const held = d.filter(o=>o.status==='held');
-        if(held.length===0) { list.innerHTML='<p style="text-align:center;color:#555;padding:20px;">No held orders</p>'; return; }
-        list.innerHTML = held.map(o=>`
+        loadedHeld = d.filter(o=>o.status==='held'); // Store for resume
+        if(loadedHeld.length===0) { list.innerHTML='<p style="text-align:center;color:#555;padding:20px;">No held orders</p>'; return; }
+        list.innerHTML = loadedHeld.map(o=>`
             <div class="held-card">
                 <div>
                     <div class="hc-num">#${o.id}</div>
@@ -1488,9 +1410,26 @@ async function resumeHeld(id) {
     const d = await res.json();
     const order = d.find(o=>o.id===id);
     if(!order) return;
-    cart = order.items.map(i=>({ item_id:i.item_id, name:i.name, price:i.price, qty:i.qty, notes:i.notes||'' }));
-    discount = order.discount_amount||0;
-    heldOrderId = order.id;
+    
+    const newOrder = {
+        id: Date.now(),
+        title: 'Held #' + id,
+        type: order.order_type || 'Takeaway',
+        meta: order.notes || '',
+        cart: order.items.map(i=>({ item_id:i.item_id, name:i.name, price:i.price, qty:i.qty, notes:i.notes||'' })),
+        discount: order.discount_amount || 0,
+        heldOrderId: order.id
+    };
+    
+    // Replace active if empty, else push new tab
+    const cOrder = activeOrders[activeIdx];
+    if(cOrder.cart.length===0 && !cOrder.heldOrderId) {
+        activeOrders[activeIdx] = newOrder;
+    } else {
+        activeOrders.push(newOrder);
+        activeIdx = activeOrders.length - 1;
+    }
+    
     renderCart();
     closeOv('ov-held');
     toast(`Loaded order #${id}`);
@@ -1500,8 +1439,10 @@ async function resumeHeld(id) {
 // PAYMENT
 // ──────────────────────────────
 function openPayment() {
-    const sub = cart.reduce((s,c)=>s+c.price*c.qty,0);
-    const total = sub - discount;
+    const cOrder = activeOrders[activeIdx];
+    if (cOrder.cart.length===0) return;
+    const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
+    const total = sub - cOrder.discount;
     document.getElementById('pay-due').innerText = total.toFixed(2)+' EGP';
     document.getElementById('received').value='';
     document.getElementById('change-val').innerText='0.00 EGP';
@@ -1543,17 +1484,25 @@ function calcChange() {
 }
 
 async function confirmPay() {
+    const cOrder = activeOrders[activeIdx];
+    const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
+    const total = sub - cOrder.discount;
+
     if(payMethod==='Cash') {
         const btn = document.getElementById('btn-confirm');
         if(btn.disabled) return;
+        const got = parseFloat(document.getElementById('received').value)||0;
+        if(got < total) { toast('Insufficient cash','err'); return; }
     }
+    document.getElementById('btn-confirm').disabled=true;
+    
     // Capture snapshot BEFORE clearing cart
     const orderSnapshot = {
-        items: cart.map(i=>({...i})),
-        discount,
+        items: cOrder.cart.map(i=>({...i})),
+        discount: cOrder.discount,
         method: payMethod,
         cashier: currentUser?.username || '—',
-        shift: currentShift?.id || '—'
+        shift: '—'
     };
     await submitOrder('paid', payMethod);
     closeOv('ov-payment');
@@ -1609,31 +1558,42 @@ function printReceipt() {
 }
 
 async function submitOrder(status, method=null) {
-    if(!currentShift) { toast('No active shift','err'); return; }
-    const sub = cart.reduce((s,c)=>s+c.price*c.qty,0);
-    const total = sub - discount;
+    const cOrder = activeOrders[activeIdx];
+    const sub = cOrder.cart.reduce((s,c)=>s+c.price*c.qty,0);
+    const total = sub - cOrder.discount;
 
     const payload = {
-        shift_id: currentShift.id, status,
-        total, payment_method: method,
-        discount_amount: discount, notes:'', items: cart
+        status, total, payment_method: method, order_type: cOrder.type,
+        discount_amount: cOrder.discount, notes: cOrder.meta, items: cOrder.cart
     };
 
     try {
         let url = `${API}/orders`;
         let meth = 'POST';
-        if(heldOrderId && status==='paid') {
-            url = `${API}/orders/${heldOrderId}/status`;
+        if(cOrder.heldOrderId && status==='paid') {
+            url = `${API}/orders/${cOrder.heldOrderId}/status`;
             meth = 'PUT';
             payload.payment_method = method;
+        } else if (cOrder.heldOrderId && status==='held') {
+            url = `${API}/orders/${cOrder.heldOrderId}`;
+            meth = 'PUT';
         }
+        
         const res = await fetch(url, { method:meth, headers:authH(), body:JSON.stringify(payload) });
         const d = await res.json();
         if(res.ok) {
             if(status==='paid') toast(`✓ Order paid (${method})`);
             else toast(`Order held`);
-            cart=[]; discount=0; heldOrderId=null;
+            
+            if (activeOrders.length > 1) {
+                activeOrders.splice(activeIdx, 1);
+                activeIdx = Math.max(0, activeIdx - 1);
+            } else {
+                orderCounter++;
+                activeOrders[0] = { id: Date.now(), title: 'Order ' + orderCounter, type: 'Dine-In', meta: '', cart: [], discount: 0, notes: '', heldOrderId: null };
+            }
             renderCart();
+            loadCashierStats();
         } else { toast(d.message||d.error,'err'); }
     } catch { toast('Connection failed','err'); }
 }
@@ -1662,18 +1622,15 @@ document.querySelectorAll('.overlay').forEach(ov=>{
 });
 
 // ──────────────────────────────
-// ORDERS HISTORY (Shift)
+// ORDERS HISTORY (Live Monitor)
 // ──────────────────────────────
 async function openOrders() {
     openOv('ov-orders');
     const body = document.getElementById('orders-history-body');
     body.innerHTML = '<div style="text-align:center;color:#555;padding:30px;"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
-    if (!currentShift) {
-        body.innerHTML = '<p style="text-align:center;color:var(--red);padding:20px;">No active shift</p>';
-        return;
-    }
+    
     try {
-        const res = await fetch(`${API}/orders/shift/${currentShift.id}`, { headers: authH() });
+        const res = await fetch(`${API}/orders/active`, { headers: authH() });
         const orders = await res.json();
         if (!orders.length) {
             body.innerHTML = '<p style="text-align:center;color:#555;padding:20px;">No orders yet in this shift</p>';

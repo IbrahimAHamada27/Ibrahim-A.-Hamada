@@ -97,10 +97,10 @@
     <div style="display:flex; gap:20px; flex-wrap:wrap;">
         <div class="section-box" style="flex:1; min-width:280px;">
             <h3 style="color:#ffd700; margin-top:0;">+ Add New Corner</h3>
-            <form onsubmit="addCorner(event)">
+            <form id="form-add-corner" onsubmit="addCorner(event)">
                 <div class="form-group"><label>English Name</label><input type="text" id="corner-en" required placeholder="Duck Espresso Corner"></div>
                 <div class="form-group"><label>Arabic Name</label><input type="text" id="corner-ar" dir="rtl" required placeholder="ركن الإسبريسو"></div>
-                <div class="form-group"><label>Image Filename</label><input type="text" id="corner-img" placeholder="espresso.jpeg"><small style="color:#888;">File must be in assets/images/</small></div>
+                <div class="form-group"><label>Corner Image</label><input type="file" id="corner-img-file" accept="image/*"></div>
                 <button type="submit" class="btn">Add Corner</button>
             </form>
         </div>
@@ -133,11 +133,8 @@
         <!-- Dashboard Stats -->
         <div class="section-box" style="grid-column: 1 / -1; display:flex; gap:20px; justify-content:space-between; align-items:center;">
             <div>
-                <h2 style="margin:0; color:#ffd700;">Shift Status: <span id="shift-status-badge" class="tag">Loading...</span></h2>
-                <p style="margin:5px 0 0 0; color:#aaa;" id="shift-time-info">No active shift.</p>
-            </div>
-            <div id="shift-actions">
-                <button class="btn btn-success" onclick="openModal('modal-open-shift')">Open Shift</button>
+                <h2 style="margin:0; color:#ffd700;">Welcome to Cashier Admin</h2>
+                <p style="margin:5px 0 0 0; color:#aaa;">Manage cashiers, view live orders, and monitor cash movements.</p>
             </div>
         </div>
 
@@ -147,17 +144,13 @@
             <form onsubmit="addUser(event)" style="margin-bottom:15px; background:#1e1e1e; padding:15px; border-radius:8px; border:1px solid #333;">
                 <div class="flex-row" style="margin-bottom:10px;">
                     <div class="form-group" style="margin:0;"><input type="text" id="u-name" placeholder="Username" required></div>
-                    <div class="form-group" style="margin:0;"><input type="text" id="u-pass" placeholder="Password" required></div>
+                    <div class="form-group" style="margin:0;"><input type="password" id="u-pass" placeholder="Password" required></div>
                 </div>
-                <div class="flex-row" style="margin-bottom:10px;">
-                    <div class="form-group" style="margin:0;"><input type="number" id="u-pin" placeholder="PIN (e.g. 1234)" required></div>
-                    <div class="form-group" style="margin:0;"><select id="u-role" required><option value="cashier">Cashier</option><option value="admin">Admin</option></select></div>
-                </div>
-                <button type="submit" class="btn btn-sm" style="width:100%;">+ Add User</button>
+                <button type="submit" class="btn btn-sm" style="width:100%;">+ Add Cashier</button>
             </form>
             <div style="max-height: 250px; overflow-y: auto;">
                 <table style="font-size: 0.9rem;">
-                    <thead><tr><th>User</th><th>Role</th><th>PIN</th><th></th></tr></thead>
+                    <thead><tr><th>Cashier Username</th><th></th></tr></thead>
                     <tbody id="users-tbody"></tbody>
                 </table>
             </div>
@@ -179,27 +172,8 @@
                 <button class="btn btn-sm" onclick="loadDashboardData()"><i class="fas fa-sync"></i> Refresh</button>
             </div>
             <table style="font-size: 0.9rem;">
-                <thead><tr><th>Order #</th><th>Status</th><th>Total</th><th>Method</th><th>Cashier</th><th>Items</th><th>Time</th></tr></thead>
-                <tbody id="orders-tbody"><tr><td colspan="6" style="text-align:center;">Loading orders...</td></tr></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- All Cashier Shifts -->
-    <div class="section-box" style="grid-column: 1 / -1; margin-top:8px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h3 style="color:#ffd700; margin:0;"><i class="fas fa-layer-group"></i> All Cashier Shifts</h3>
-            <button class="btn btn-sm" onclick="loadAllShifts()"><i class="fas fa-sync"></i> Refresh</button>
-        </div>
-        <div style="overflow-x:auto; max-height:360px; overflow-y:auto;">
-            <table style="font-size: 0.85rem; min-width:750px;">
-                <thead style="position:sticky;top:0;background:#111;"><tr>
-                    <th>#</th><th>Cashier</th><th>Status</th>
-                    <th>Opened</th><th>Closed</th>
-                    <th style="color:#4CAF50;">Sales</th><th>Orders</th>
-                    <th>Cash</th><th>Card</th><th></th>
-                </tr></thead>
-                <tbody id="all-shifts-tbody"><tr><td colspan="10" style="text-align:center;color:#555;">Click Cashier Admin to load</td></tr></tbody>
+                <thead><tr><th>Order #</th><th>Type</th><th>Status</th><th>Total</th><th>Method</th><th>Cashier</th><th>Items</th><th>Time</th></tr></thead>
+                <tbody id="orders-tbody"><tr><td colspan="8" style="text-align:center;">Loading orders...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -242,7 +216,7 @@
         <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
             <table style="font-size:0.85rem;">
                 <thead style="position:sticky;top:0;background:#111;">
-                    <tr><th>#</th><th>Cashier</th><th>Shift</th><th>Items</th><th>Method</th><th>Discount</th><th>Total</th><th>Time</th></tr>
+                    <tr><th>#</th><th>Type</th><th>Cashier</th><th>Items</th><th>Method</th><th>Discount</th><th>Total</th><th>Time</th></tr>
                 </thead>
                 <tbody id="report-orders-tbody"><tr><td colspan="8" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
             </table>
@@ -255,44 +229,15 @@
         <div style="overflow-x:auto;max-height:250px;overflow-y:auto;">
             <table style="font-size:0.85rem;">
                 <thead style="position:sticky;top:0;background:#111;">
-                    <tr><th>#</th><th>Cashier</th><th>Shift</th><th>Type</th><th>Amount</th><th>Reason</th><th>Time</th></tr>
+                    <tr><th>#</th><th>Cashier</th><th>Type</th><th>Amount</th><th>Reason</th><th>Time</th></tr>
                 </thead>
-                <tbody id="report-movements-tbody"><tr><td colspan="7" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
+                <tbody id="report-movements-tbody"><tr><td colspan="6" style="text-align:center;color:#555;">Select a period above</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
 <!-- Modals -->
-<div id="modal-open-shift" class="modal">
-    <div class="modal-content">
-        <h3>Open New Shift</h3>
-        <div class="form-group">
-            <label>Opening Cash Amount (EGP)</label>
-            <input type="number" id="open-cash-amount" value="0" min="0" step="1">
-        </div>
-        <div style="margin-top:20px;">
-            <button class="btn btn-success" onclick="executeOpenShift()">Confirm</button>
-            <button class="close-btn" onclick="closeModal('modal-open-shift')">Cancel</button>
-        </div>
-    </div>
-</div>
-
-<div id="modal-close-shift" class="modal">
-    <div class="modal-content">
-        <h3>Close Shift & Z-Report</h3>
-        <div id="z-report-data" style="font-size:0.9rem; line-height:1.6; margin-bottom:15px; color:#ddd; background:#111; padding:15px; border-radius:5px;"></div>
-        <div class="form-group">
-            <label>Actual Cash in Drawer (EGP)</label>
-            <input type="number" id="close-cash-amount" required min="0" step="1">
-        </div>
-        <div style="margin-top:20px;">
-            <button class="btn btn-danger" onclick="executeCloseShift()">Close Shift</button>
-            <button class="close-btn" onclick="closeModal('modal-close-shift')">Cancel</button>
-        </div>
-    </div>
-</div>
-
 <div id="modal-cash" class="modal">
     <div class="modal-content">
         <h3 id="modal-cash-title">Cash Movement</h3>
@@ -333,8 +278,6 @@
     const TOKEN = localStorage.getItem('adminToken');
     const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
     
-    let currentShift = null;
-
     // Verify token on load
     (async () => {
         if (!TOKEN) { window.location.href = 'admin.html'; return; }
@@ -374,12 +317,12 @@
         document.getElementById(`tab-${tab}`).classList.add('active');
         btnElement.classList.add('active');
 
-        if (tab === 'cashier') { loadDashboardData(); loadAllShifts(); }
+        if (tab === 'cashier') { loadDashboardData(); }
         if (tab === 'reports') loadReport('daily', document.querySelector('.report-period-btn[data-period="daily"]'));
     }
 
     // ==========================================
-    // MENU MANAGEMENT (EXISTING LOGIC)
+    // MENU MANAGEMENT
     // ==========================================
     async function fetchData() {
         const result = await apiCall(`${API}/corners`);
@@ -448,16 +391,42 @@
 
     async function addCorner(e) {
         e.preventDefault();
-        const result = await apiCall(`${API}/corners`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ nameEn: document.getElementById('corner-en').value, nameAr: document.getElementById('corner-ar').value, imageName: document.getElementById('corner-img').value }) });
-        if (!result.ok) return showToast(result.error, 'error');
-        showToast('Corner added'); e.target.reset(); fetchData();
+        const nameEn = document.getElementById('corner-en').value;
+        const nameAr = document.getElementById('corner-ar').value;
+        const fileInput = document.getElementById('corner-img-file');
+        
+        let finalImageName = '';
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const uploadRes = await apiCall(`${API}/upload-image`, {
+                    method: 'POST', headers: authHeaders, body: JSON.stringify({ imageName: file.name, imageData: reader.result })
+                });
+                if (!uploadRes.ok) return showToast(uploadRes.error, 'error');
+                finalImageName = uploadRes.data.fileName;
+                finishAddCorner(nameEn, nameAr, finalImageName);
+            };
+            reader.onerror = () => showToast('Failed to read file', 'error');
+        } else {
+            finishAddCorner(nameEn, nameAr, finalImageName);
+        }
     }
+    
+    async function finishAddCorner(nameEn, nameAr, imageName) {
+        const result = await apiCall(`${API}/corners`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ nameEn, nameAr, imageName }) });
+        if (!result.ok) return showToast(result.error, 'error');
+        showToast('Corner added'); document.getElementById('form-add-corner').reset(); fetchData();
+    }
+
     async function addItem(e) {
         e.preventDefault();
         const result = await apiCall(`${API}/items`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ cornerId: document.getElementById('item-corner').value, nameEn: document.getElementById('item-en').value, nameAr: document.getElementById('item-ar').value, price: document.getElementById('item-price').value }) });
         if (!result.ok) return showToast(result.error, 'error');
         showToast('Item added'); e.target.reset(); fetchData();
     }
+
     async function savePrice(id) {
         const btn = document.getElementById(`savebtn-${id}`);
         const row = btn.closest('tr');
@@ -466,6 +435,7 @@
         if (!result.ok) return showToast(result.error, 'error');
         showToast('Saved', 'success'); btn.textContent='Saved!'; setTimeout(()=>btn.textContent='Save', 1000);
     }
+
     async function deleteItem(id) { if(confirm('Delete item?')){ await apiCall(`${API}/items/${id}`, { method:'DELETE', headers:authHeaders }); showToast('Deleted'); fetchData(); } }
     async function deleteCorner(id) { if(confirm('Delete corner?')){ await apiCall(`${API}/corners/${id}`, { method:'DELETE', headers:authHeaders }); showToast('Deleted'); fetchData(); } }
 
@@ -499,8 +469,6 @@
             document.getElementById('cash-type').value = extra;
             document.getElementById('modal-cash-title').innerText = extra === 'in' ? 'Cash In (Add)' : 'Cash Out (Remove)';
             document.getElementById('btn-submit-cash').className = extra === 'in' ? 'btn btn-success' : 'btn btn-danger';
-        } else if (id === 'modal-close-shift') {
-            loadZReport();
         }
         document.getElementById(id).style.display = 'flex';
     }
@@ -508,7 +476,6 @@
 
     async function loadDashboardData() {
         loadUsers();
-        await loadShift();
         loadOrders();
         loadRecentMovements();
     }
@@ -523,7 +490,7 @@
                 <div>
                     ${m.type === 'in' ? '<span style="color:#4CAF50;font-weight:bold;">[+IN]</span>' : '<span style="color:#ff4d4d;font-weight:bold;">[-OUT]</span>'}
                     <span style="color:#ccc;">${m.reason}</span> <br>
-                    <small style="color:#666;">${m.cashier_name||'Unknown'} • Shift #${m.shift_id}</small>
+                    <small style="color:#666;">${m.cashier_name||'Unknown'} • ${new Date(m.created_at).toLocaleTimeString()}</small>
                 </div>
                 <div style="font-weight:bold;color:${m.type==='in'?'#4CAF50':'#ff4d4d'};">${m.amount} EGP</div>
             </div>
@@ -534,27 +501,23 @@
         const res = await apiCall(`${API}/users`, { headers: authHeaders });
         if (!res.ok) return;
         const tbody = document.getElementById('users-tbody');
-        tbody.innerHTML = res.data.map(u => `
+        tbody.innerHTML = res.data.filter(u => u.role === 'cashier').map(u => `
             <tr>
                 <td><strong>${u.username}</strong></td>
-                <td><span class="tag">${u.role}</span></td>
-                <td style="color:#aaa;">${u.pin}</td>
                 <td><button class="btn btn-danger btn-sm" onclick="delUser(${u.id})">X</button></td>
             </tr>
-        `).join('') || `<tr><td colspan="4" style="text-align:center;">No users found</td></tr>`;
+        `).join('') || `<tr><td colspan="2" style="text-align:center;">No cashiers found</td></tr>`;
     }
 
     async function addUser(e) {
         e.preventDefault();
         const username = document.getElementById('u-name').value;
         const password = document.getElementById('u-pass').value;
-        const pin = document.getElementById('u-pin').value;
-        const role = document.getElementById('u-role').value;
         const res = await apiCall(`${API}/users`, {
-            method: 'POST', headers: authHeaders, body: JSON.stringify({ username, password, pin, role })
+            method: 'POST', headers: authHeaders, body: JSON.stringify({ username, password })
         });
         if (!res.ok) return showToast(res.error, 'error');
-        showToast('User added'); e.target.reset(); loadUsers();
+        showToast('Cashier added'); e.target.reset(); loadUsers();
     }
 
     async function delUser(id) {
@@ -563,96 +526,27 @@
         if (res.ok) { showToast('User deleted'); loadUsers(); } else showToast(res.error, 'error');
     }
 
-    async function loadShift() {
-        const res = await apiCall(`${API}/shifts/current`, { headers: authHeaders });
-        const badge = document.getElementById('shift-status-badge');
-        const info = document.getElementById('shift-time-info');
-        const actions = document.getElementById('shift-actions');
-        
-        if (res.ok && res.data.shift) {
-            currentShift = res.data.shift;
-            badge.innerText = `OPEN (#${currentShift.id})`;
-            badge.style.color = '#4CAF50';
-            info.innerHTML = `Opened at: ${new Date(currentShift.opened_at).toLocaleString()} <br> Opening Cash: ${currentShift.opening_cash} EGP`;
-            actions.innerHTML = `<button class="btn btn-danger" onclick="openModal('modal-close-shift')">Close Shift & Print Z</button>`;
-        } else {
-            currentShift = null;
-            badge.innerText = 'CLOSED';
-            badge.style.color = '#ff4d4d';
-            info.innerText = 'No active shift.';
-            actions.innerHTML = `<button class="btn btn-success" onclick="openModal('modal-open-shift')">Open New Shift</button>`;
-        }
-    }
-
-    async function executeOpenShift() {
-        const cash = document.getElementById('open-cash-amount').value;
-        const res = await apiCall(`${API}/shifts/open`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ opening_cash: parseFloat(cash) }) });
-        closeModal('modal-open-shift');
-        if (res.ok) { showToast('Shift opened'); loadShift(); } else showToast(res.error, 'error');
-    }
-
     async function executeCashMovement() {
-        if (!currentShift) return showToast('No open shift', 'error');
         const type = document.getElementById('cash-type').value;
         const amount = document.getElementById('cash-amount').value;
         const reason = document.getElementById('cash-reason').value;
         
-        const res = await apiCall(`${API}/shifts/cash-movement`, {
-            method: 'POST', headers: authHeaders, body: JSON.stringify({ shift_id: currentShift.id, type, amount, reason })
+        const res = await apiCall(`${API}/cash-movement`, {
+            method: 'POST', headers: authHeaders, body: JSON.stringify({ type, amount, reason })
         });
         closeModal('modal-cash');
         if (res.ok) { showToast('Cash logged'); document.getElementById('cash-amount').value=''; document.getElementById('cash-reason').value=''; loadRecentMovements(); } else showToast(res.error, 'error');
     }
 
-    async function loadZReport() {
-        if (!currentShift) return;
-        const res = await apiCall(`${API}/shifts/${currentShift.id}/report`, { headers: authHeaders });
-        if (!res.ok) return;
-        
-        let salesTotal = 0;
-        let heldOrders = 0;
-        res.data.orderStats.forEach(s => {
-            if (s.status === 'paid') salesTotal = s.totalSum;
-            if (s.status === 'held') heldOrders = s.count;
-        });
-        
-        let cashIn = 0, cashOut = 0;
-        res.data.movementStats.forEach(s => {
-            if (s.type === 'in') cashIn = s.totalSum;
-            if (s.type === 'out') cashOut = s.totalSum;
-        });
-        
-        const expected = currentShift.opening_cash + salesTotal + cashIn - cashOut;
-
-        const html = `
-            <strong>Shift #${currentShift.id} Summary:</strong><br><br>
-            Opening Cash: ${currentShift.opening_cash} EGP <br>
-            + Total Cash Sales: ${salesTotal} EGP <br>
-            + Manual Cash IN: ${cashIn} EGP <br>
-            - Manual Cash OUT: ${cashOut} EGP <br>
-            <hr style="border-color:#333; margin:10px 0;">
-            <strong style="color:#ffd700;">Expected in Drawer: ${expected} EGP</strong><br>
-            <span style="color:#ff4d4d;">Held / Unpaid Orders: ${heldOrders}</span>
-        `;
-        document.getElementById('z-report-data').innerHTML = html;
-    }
-
-    async function executeCloseShift() {
-        const cash = document.getElementById('close-cash-amount').value;
-        if (!cash) return;
-        const res = await apiCall(`${API}/shifts/close`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ closing_cash: parseFloat(cash) }) });
-        closeModal('modal-close-shift');
-        if (res.ok) { showToast('Shift closed'); loadShift(); } else showToast(res.error, 'error');
-    }
-
     async function loadOrders() {
         const res = await apiCall(`${API}/orders/active`, { headers: authHeaders });
         const tbody = document.getElementById('orders-tbody');
-        if (!res.ok) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load</td></tr>`; return; }
+        if (!res.ok) { tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load</td></tr>`; return; }
         
         tbody.innerHTML = res.data.map(o => `
             <tr>
                 <td><strong>#${o.id}</strong></td>
+                <td>${o.order_type==='Dine-In'?'🍽️':(o.order_type==='Delivery'?'🛵':'🏃')} ${o.order_type||'—'}</td>
                 <td><span class="tag" style="background:${o.status==='open'?'rgba(76,175,80,0.2)':'rgba(255,193,7,0.2)'};color:${o.status==='open'?'#4CAF50':'#FFC107'}">${o.status.toUpperCase()}</span></td>
                 <td>${o.total} EGP</td>
                 <td>${o.payment_method || '-'}</td>
@@ -660,42 +554,9 @@
                 <td style="font-size:0.8rem; color:#aaa;">${o.items.map(i => `${i.qty}x ${i.name}`).join('<br>')}</td>
                 <td style="font-size:0.8rem;">${new Date(o.created_at).toLocaleTimeString()}</td>
             </tr>
-        `).join('') || `<tr><td colspan="7" style="text-align:center; color:#aaa;">No active orders</td></tr>`;
+        `).join('') || `<tr><td colspan="8" style="text-align:center; color:#aaa;">No active orders</td></tr>`;
     }
 
-    async function loadAllShifts() {
-        const tbody = document.getElementById('all-shifts-tbody');
-        if (!tbody) return;
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
-        const res = await apiCall(`${API}/shifts/all`, { headers: authHeaders });
-        if (!res.ok) { tbody.innerHTML = `<tr><td colspan="10" style="color:#ff4d4d;text-align:center;">❌ ${res.error}</td></tr>`; return; }
-        const shifts = res.data;
-        if (!shifts.length) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#555;">No shifts yet</td></tr>'; return; }
-        tbody.innerHTML = shifts.map(s => {
-            const isOpen = s.status === 'open';
-            const statusHtml = `<span class="tag" style="background:${isOpen?'rgba(76,175,80,0.15)':'rgba(100,100,100,0.15)'};color:${isOpen?'#4CAF50':'#888'};border:1px solid ${isOpen?'#4CAF50':'#444'};">${isOpen?'🟢 OPEN':'■ CLOSED'}</span>`;
-            const closeBtn = isOpen ? `<button class="btn btn-danger btn-sm" onclick="adminCloseShift(${s.id})"><i class="fas fa-stop"></i> Close</button>` : '<span style="color:#444;">—</span>';
-            return `<tr>
-                <td><strong style="color:var(--gold);">#${s.id}</strong></td>
-                <td style="color:#fff;font-weight:600;">${s.cashier_name||'—'}</td>
-                <td>${statusHtml}</td>
-                <td style="font-size:0.8rem;color:#aaa;">${new Date(s.opened_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-                <td style="font-size:0.8rem;color:#666;">${s.closed_at?new Date(s.closed_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</td>
-                <td style="color:#4CAF50;font-weight:700;">${(s.totalSales||0).toFixed(2)} EGP</td>
-                <td style="text-align:center;">${s.orderCount||0}</td>
-                <td style="color:#26a65b;">${(s.cashSales||0).toFixed(2)}</td>
-                <td style="color:#9b59b6;">${(s.cardSales||0).toFixed(2)}</td>
-                <td>${closeBtn}</td>
-            </tr>`;
-        }).join('');
-    }
-
-    async function adminCloseShift(shiftId) {
-        if (!confirm(`Close shift #${shiftId}?`)) return;
-        const res = await apiCall(`${API}/shifts/close`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ shift_id: shiftId, closing_cash: 0 }) });
-        if (res.ok) { showToast('Shift closed'); loadAllShifts(); loadDashboardData(); }
-        else showToast(res.error || 'Error', 'error');
-    }
     async function loadReport(period, btnEl) {
         // Update active button
         document.querySelectorAll('.report-period-btn').forEach(b => { b.style.background='#333'; b.style.color='#fff'; });
@@ -766,8 +627,8 @@
             ? orders.map(o => `
                 <tr>
                     <td><strong>#${o.id}</strong></td>
+                    <td style="color:#fff;">${o.order_type==='Dine-In'?'🍽️':(o.order_type==='Delivery'?'🛵':'🏃')} ${o.order_type||'—'}</td>
                     <td style="color:#ffd700;">${o.cashier_name||'—'}</td>
-                    <td style="color:#aaa;">#${o.shift_id}</td>
                     <td style="font-size:0.8rem;color:#aaa;max-width:200px;">${o.itemsSummary||'—'}</td>
                     <td>${o.payment_method==='Cash'?'💵 Cash':'💳 Card'}</td>
                     <td style="color:#e74c3c;">${o.discount_amount>0?'− '+o.discount_amount.toFixed(2)+' EGP':'—'}</td>
@@ -782,14 +643,13 @@
                 <tr>
                     <td><strong>#${m.id}</strong></td>
                     <td style="color:#ffd700;">${m.cashier_name||'—'}</td>
-                    <td style="color:#aaa;">#${m.shift_id}</td>
                     <td style="font-weight:bold;color:${m.type==='in'?'#4CAF50':'#e74c3c'};">${m.type.toUpperCase()}</td>
                     <td>${(m.amount||0).toFixed(2)} EGP</td>
                     <td style="color:#ccc;">${m.reason}</td>
                     <td style="font-size:0.78rem;color:#666;">${new Date(m.created_at).toLocaleString('ar-EG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
                 </tr>
             `).join('')
-            : '<tr><td colspan="7" style="text-align:center;color:#555;">No movements in this period</td></tr>';
+            : '<tr><td colspan="6" style="text-align:center;color:#555;">No movements in this period</td></tr>';
     }
 
 </script>
