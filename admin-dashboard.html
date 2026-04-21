@@ -73,7 +73,7 @@
         .close-btn { background: #ff4d4d; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; float: right; margin-left: 10px; }
     </style>
 </head>
-<body>
+<body style="display: none;">
 <div id="toast-container"></div>
 
 <div class="header">
@@ -291,14 +291,15 @@
 <script>
     const API = '/api';
     let cornersData = [];
-    const TOKEN = localStorage.getItem('adminToken');
+    const TOKEN = localStorage.getItem('adminToken') || localStorage.getItem('posToken');
     const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': TOKEN };
     
     // Verify token on load
     (async () => {
-        if (!TOKEN) { window.location.href = 'admin.html'; return; }
+        if (!TOKEN) { window.location.href = 'login.html'; return; }
         const res = await fetch(`${API}/verify`, { headers: { 'x-auth-token': TOKEN } });
-        if (!res.ok) { localStorage.removeItem('adminToken'); window.location.href = 'admin.html'; }
+        if (!res.ok) { localStorage.removeItem('adminToken'); window.location.href = 'login.html'; }
+        else { document.body.style.display = 'block'; }
     })();
 
     function showToast(message, type = 'success') {

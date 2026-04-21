@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const mongoose = require('mongoose');
+const AutoIncrement = require('mongoose-sequence')(mongoose);
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
@@ -15,13 +16,12 @@ const port = process.env.PORT || 3000;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'IbrahimA.Hamada';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'IbrahimInDuck2006';
 const SECRET_KEY = process.env.SECRET_KEY || 'coffee-duck-super-secret-2025';
+const JWT_SECRET = process.env.JWT_SECRET || 'coffee-duck-pos-secret-v2';
 
-// Generate a stable HMAC token from credentials — survives server restarts
 function generateToken(username) {
     return crypto.createHmac('sha256', SECRET_KEY).update(username + ADMIN_PASSWORD).digest('hex');
 }
 
-// Auth middleware — verifies HMAC token without any stored state
 function requireAuth(req, res, next) {
     const token = req.headers['x-auth-token'];
     if (!token || token !== generateToken(ADMIN_USERNAME)) {
@@ -30,11 +30,8 @@ function requireAuth(req, res, next) {
     next();
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'coffee-duck-pos-secret-v2';
-
 function requireRoles(roles) {
     return (req, res, next) => {
-        // HMAC Override for backward compatibility with admin-dashboard
         const hmacToken = req.headers['x-auth-token'];
         if (hmacToken && hmacToken === generateToken(ADMIN_USERNAME)) {
             req.user = { id: 0, username: ADMIN_USERNAME, role: 'admin' };
@@ -57,61 +54,65 @@ function requireRoles(roles) {
     };
 }
 
-// ===================== DATABASE =====================
-const db = new sqlite3.Database(path.join(__dirname, 'database.sqlite'));
-db.run('PRAGMA foreign_keys = ON');
+// ===================== MONGODB DATABASE =====================
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/coffee-duck';
 
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS corners (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        imageName TEXT, nameEn TEXT, nameAr TEXT, sortOrder INTEGER DEFAULT 0
-    )`);
-    db.run(`CREATE TABLE IF NOT EXISTS items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cornerId INTEGER, nameEn TEXT, nameAr TEXT, price TEXT, sortOrder INTEGER DEFAULT 0,
-        FOREIGN KEY(cornerId) REFERENCES corners(id) ON DELETE CASCADE
-    )`);
-    db.run(`ALTER TABLE corners ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
-    db.run(`ALTER TABLE items ADD COLUMN sortOrder INTEGER DEFAULT 0`, () => {});
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Connected to MongoDB'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, pin TEXT UNIQUE, role TEXT
-    )`);
-    // Removed strict shifts references, orders and movements now use cashier_id directly
-    db.run(`CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT DEFAULT 'open', total REAL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, payment_method TEXT, discount_amount REAL DEFAULT 0, notes TEXT, cashier_id INTEGER DEFAULT 0, cashier_name TEXT DEFAULT '', order_type TEXT DEFAULT 'Takeaway'
-    )`);
-    db.run(`CREATE TABLE IF NOT EXISTS order_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, item_id INTEGER, name TEXT, price REAL, qty INTEGER, notes TEXT, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
-    )`);
-    db.run(`CREATE TABLE IF NOT EXISTS cash_movements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, amount REAL, reason TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, cashier_id INTEGER DEFAULT 0, cashier_name TEXT DEFAULT 'Unknown'
-    )`);
-
-    // Add new columns to existing tables securely without crashing if they exist
-    db.run(`ALTER TABLE orders ADD COLUMN cashier_id INTEGER DEFAULT 0`, () => {});
-    db.run(`ALTER TABLE orders ADD COLUMN cashier_name TEXT DEFAULT ''`, () => {});
-    db.run(`ALTER TABLE orders ADD COLUMN order_type TEXT DEFAULT 'Takeaway'`, () => {});
-    db.run(`ALTER TABLE cash_movements ADD COLUMN cashier_id INTEGER DEFAULT 0`, () => {});
-    db.run(`ALTER TABLE cash_movements ADD COLUMN cashier_name TEXT DEFAULT 'Unknown'`, () => {});
-    db.run(`ALTER TABLE orders ADD COLUMN service_charge REAL DEFAULT 0`, () => {});
-
-    db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
-        if (!err && row.count === 0) {
-            console.log('Seeding default POS users...');
-            const adminHash = crypto.createHash('sha256').update('admin123').digest('hex');
-            const cashierHash = crypto.createHash('sha256').update('cashier123').digest('hex');
-            db.run('INSERT INTO users (username, password_hash, pin, role) VALUES (?, ?, ?, ?)', ['admin', adminHash, crypto.randomUUID(), 'admin']);
-            db.run('INSERT INTO users (username, password_hash, pin, role) VALUES (?, ?, ?, ?)', ['cashier', cashierHash, crypto.randomUUID(), 'cashier']);
-        }
-    });
-
-    db.get('SELECT COUNT(*) as count FROM corners', (err, row) => {
-        if (!err && row.count === 0) {
-            console.log('Database is empty. You can now use seed.js to populate it!');
-        }
-    });
+// Mongoose Models
+const CornerSchema = new mongoose.Schema({
+    imageName: String, nameEn: String, nameAr: String, sortOrder: { type: Number, default: 0 }
 });
+CornerSchema.plugin(AutoIncrement, {inc_field: 'id', id: 'corner_id_counter'});
+const Corner = mongoose.model('Corner', CornerSchema);
+
+const ItemSchema = new mongoose.Schema({
+    cornerId: Number, nameEn: String, nameAr: String, price: String, sortOrder: { type: Number, default: 0 }
+});
+ItemSchema.plugin(AutoIncrement, {inc_field: 'id', id: 'item_id_counter'});
+const Item = mongoose.model('Item', ItemSchema);
+
+const UserSchema = new mongoose.Schema({
+    username: { type: String, unique: true }, password_hash: String, pin: { type: String, unique: true }, role: String
+});
+UserSchema.plugin(AutoIncrement, {inc_field: 'id', id: 'user_id_counter'});
+const User = mongoose.model('User', UserSchema);
+
+const OrderItemSchema = new mongoose.Schema({
+    item_id: Number, name: String, price: Number, qty: Number, notes: String
+}, { _id: false });
+
+const OrderSchema = new mongoose.Schema({
+    status: { type: String, default: 'open' }, total: { type: Number, default: 0 },
+    created_at: { type: Date, default: Date.now }, payment_method: String, discount_amount: { type: Number, default: 0 },
+    service_charge: { type: Number, default: 0 }, notes: String, cashier_id: { type: Number, default: 0 },
+    cashier_name: { type: String, default: '' }, order_type: { type: String, default: 'Takeaway' },
+    items: [OrderItemSchema]
+});
+OrderSchema.plugin(AutoIncrement, {inc_field: 'id', id: 'order_id_counter'});
+const Order = mongoose.model('Order', OrderSchema);
+
+const CashMovementSchema = new mongoose.Schema({
+    type: String, amount: Number, reason: String, created_at: { type: Date, default: Date.now },
+    cashier_id: { type: Number, default: 0 }, cashier_name: { type: String, default: 'Unknown' }
+});
+CashMovementSchema.plugin(AutoIncrement, {inc_field: 'id', id: 'cashmovement_id_counter'});
+const CashMovement = mongoose.model('CashMovement', CashMovementSchema);
+
+// Initial Seed Users
+async function seedDefaultUsers() {
+    const adminCount = await User.countDocuments();
+    if (adminCount === 0) {
+        console.log('Seeding default POS users...');
+        const adminHash = crypto.createHash('sha256').update('admin123').digest('hex');
+        const cashierHash = crypto.createHash('sha256').update('cashier123').digest('hex');
+        await User.create([{ username: 'admin', password_hash: adminHash, pin: crypto.randomUUID(), role: 'admin' }]);
+        await User.create([{ username: 'cashier', password_hash: cashierHash, pin: crypto.randomUUID(), role: 'cashier' }]);
+    }
+}
+seedDefaultUsers();
 
 // ===================== MIDDLEWARE =====================
 app.use(cors());
@@ -120,375 +121,241 @@ app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
-const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { success: false, message: 'Too many requests' }});
 
 // ===================== API ENDPOINTS =====================
 
-// 1. Admin Login 
 app.post('/api/login', loginLimiter, (req, res) => {
     const { username, password } = req.body;
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        const token = generateToken(username);
-        res.json({ success: true, token });
+        res.json({ success: true, token: generateToken(username) });
     } else {
         res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 });
 
 app.get('/api/verify', requireAuth, (req, res) => res.json({ success: true }));
-
 app.post('/api/logout', (req, res) => res.json({ success: true }));
 
-// 3. Fetch All Corners (PUBLIC)
-app.get('/api/corners', (req, res) => {
-    db.all('SELECT * FROM corners ORDER BY sortOrder ASC, id ASC', [], (err, corners) => {
-        if (err) return res.status(500).json({ error: err.message });
-        db.all('SELECT * FROM items ORDER BY sortOrder ASC, id ASC', [], (err, items) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json(corners.map(corner => ({ ...corner, items: items.filter(i => i.cornerId === corner.id) })));
-        });
-    });
+app.get('/api/corners', async (req, res) => {
+    try {
+        const corners = await Corner.find().sort({ sortOrder: 1, id: 1 }).lean();
+        const items = await Item.find().sort({ sortOrder: 1, id: 1 }).lean();
+        const result = corners.map(corner => ({
+            ...corner,
+            items: items.filter(i => i.cornerId === corner.id)
+        }));
+        res.json(result);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ---- Protected routes below ----
-
-// Upload Image Endpoint
 app.post('/api/upload-image', requireAuth, (req, res) => {
     const { imageName, imageData } = req.body;
-    if (!imageName || !imageData) return res.status(400).json({ error: 'Missing image data' });
-    
-    // Remove Base64 header
+    if (!imageName || !imageData) return res.status(400).json({ error: 'Missing Data' });
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, 'base64');
     const safeName = Date.now() + '_' + imageName.replace(/[^a-zA-Z0-9.\-_]/g, '');
     const dirPath = path.join(__dirname, 'assets', 'images');
-    
-    // Ensure dir exists
     if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-    
-    const filePath = path.join(dirPath, safeName);
-    fs.writeFile(filePath, buffer, (err) => {
-        if (err) return res.status(500).json({ error: 'Failed to save image' });
+    fs.writeFile(path.join(dirPath, safeName), buffer, err => {
+        if (err) return res.status(500).json({ error: 'Failed' });
         res.json({ success: true, fileName: safeName });
     });
 });
 
-app.put('/api/corners/reorder', requireAuth, (req, res) => {
+app.put('/api/corners/reorder', requireAuth, async (req, res) => {
     const { ids } = req.body;
-    const stmt = db.prepare('UPDATE corners SET sortOrder = ? WHERE id = ?');
-    ids.forEach((id, index) => stmt.run(index, id));
-    stmt.finalize();
+    for (const [index, id] of ids.entries()) { await Corner.updateOne({ id }, { sortOrder: index }); }
     res.json({ success: true });
 });
 
-app.post('/api/corners', requireAuth, (req, res) => {
-    const { imageName, nameEn, nameAr } = req.body;
-    db.run('INSERT INTO corners (imageName, nameEn, nameAr) VALUES (?, ?, ?)', [imageName, nameEn, nameAr], function(err) {
-        if (err) return res.status(400).json({ error: err.message });
-        res.json({ id: this.lastID, imageName, nameEn, nameAr });
-    });
+app.post('/api/corners', requireAuth, async (req, res) => {
+    try {
+        const corner = await Corner.create(req.body);
+        res.json({ id: corner.id, imageName: corner.imageName, nameEn: corner.nameEn, nameAr: corner.nameAr });
+    } catch(err) { res.status(400).json({ error: err.message }); }
 });
 
-app.delete('/api/corners/:id', requireAuth, (req, res) => {
-    db.run('DELETE FROM items WHERE cornerId = ?', [req.params.id], () => {
-        db.run('DELETE FROM corners WHERE id = ?', [req.params.id], function(err) {
-            if (err) return res.status(400).json({ error: err.message });
-            res.json({ success: true });
-        });
-    });
-});
-
-app.put('/api/items/reorder', requireAuth, (req, res) => {
-    const { ids } = req.body;
-    const stmt = db.prepare('UPDATE items SET sortOrder = ? WHERE id = ?');
-    ids.forEach((id, index) => stmt.run(index, id));
-    stmt.finalize();
+app.delete('/api/corners/:id', requireAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await Item.deleteMany({ cornerId: id });
+    await Corner.deleteOne({ id });
     res.json({ success: true });
 });
 
-app.post('/api/items', requireAuth, (req, res) => {
-    const { cornerId, nameEn, nameAr, price } = req.body;
-    db.run('INSERT INTO items (cornerId, nameEn, nameAr, price) VALUES (?, ?, ?, ?)', [cornerId, nameEn, nameAr, price], function(err) {
-        if (err) return res.status(400).json({ error: err.message });
-        res.json({ id: this.lastID, cornerId, nameEn, nameAr, price });
-    });
+app.put('/api/items/reorder', requireAuth, async (req, res) => {
+    const { ids } = req.body;
+    for (const [index, id] of ids.entries()) { await Item.updateOne({ id }, { sortOrder: index }); }
+    res.json({ success: true });
 });
 
-app.put('/api/items/:id', requireAuth, (req, res) => {
-    const { nameEn, nameAr, price } = req.body;
-    db.run('UPDATE items SET nameEn = ?, nameAr = ?, price = ? WHERE id = ?', [nameEn, nameAr, price, req.params.id], function(err) {
-        if (err) return res.status(400).json({ error: err.message });
-        res.json({ success: true });
-    });
+app.post('/api/items', requireAuth, async (req, res) => {
+    try {
+        const item = await Item.create(req.body);
+        res.json({ id: item.id, ...req.body });
+    } catch(err) { res.status(400).json({ error: err.message }); }
 });
 
-app.delete('/api/items/:id', requireAuth, (req, res) => {
-    db.run('DELETE FROM items WHERE id = ?', [req.params.id], function(err) {
-        if (err) return res.status(400).json({ error: err.message });
-        res.json({ success: true });
-    });
+app.put('/api/items/:id', requireAuth, async (req, res) => {
+    await Item.updateOne({ id: parseInt(req.params.id) }, req.body);
+    res.json({ success: true });
 });
 
-// ===================== POS API ENDPOINTS =====================
+app.delete('/api/items/:id', requireAuth, async (req, res) => {
+    await Item.deleteOne({ id: parseInt(req.params.id) });
+    res.json({ success: true });
+});
 
-// Pure Cashier Login via Username & Password
-app.post('/api/pos/login', loginLimiter, (req, res) => {
+// ===================== POS API =====================
+
+app.post('/api/pos/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ success: false, message: 'Missing username or password' });
-
+    if (!username || !password) return res.status(400).json({ success: false });
     const hash = crypto.createHash('sha256').update(password).digest('hex');
-    db.get('SELECT * FROM users WHERE username = ? AND password_hash = ?', [username, hash], (err, user) => {
-        if (err || !user) return res.status(401).json({ success: false, message: 'Invalid credentials' });
-        
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
-        res.json({ success: true, token, user: { id: user.id, username: user.username, role: user.role } });
-    });
+    const user = await User.findOne({ username, password_hash: hash });
+    if (!user) return res.status(401).json({ success: false });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+    res.json({ success: true, token, user: { id: user.id, username: user.username, role: user.role } });
 });
 
-app.get('/api/pos/verify', requireRoles([]), (req, res) => {
-    res.json({ success: true, user: req.user });
-});
+app.get('/api/pos/verify', requireRoles([]), (req, res) => res.json({ success: true, user: req.user }));
 
-// Users Management (Admin)
-app.get('/api/users', requireRoles(['admin']), (req, res) => {
-    db.all('SELECT id, username, role FROM users', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
+app.get('/api/users', requireRoles(['admin']), async (req, res) => res.json(await User.find({}, 'id username role')));
 
-app.post('/api/users', requireRoles(['admin']), (req, res) => {
+app.post('/api/users', requireRoles(['admin']), async (req, res) => {
     const { username, password } = req.body;
     const hash = crypto.createHash('sha256').update(password).digest('hex');
-    const fakePin = crypto.randomUUID(); // satisfy PIN unique constraint safely
-    const role = 'cashier'; // Force all new users to be cashiers
-    
-    db.run('INSERT INTO users (username, password_hash, pin, role) VALUES (?, ?, ?, ?)', [username, hash, fakePin, role], function(err) {
-        if (err) return res.status(400).json({ error: err.message });
-        res.json({ success: true, id: this.lastID });
-    });
+    const user = await User.create({ username, password_hash: hash, pin: crypto.randomUUID(), role: 'cashier' });
+    res.json({ success: true, id: user.id });
 });
 
-app.delete('/api/users/:id', requireRoles(['admin']), (req, res) => {
-    db.run('DELETE FROM users WHERE id = ?', [req.params.id], err => {
-        if (err) return res.status(400).json({ error: err.message });
-        res.json({ success: true });
-    });
+app.delete('/api/users/:id', requireRoles(['admin']), async (req, res) => {
+    await User.deleteOne({ id: parseInt(req.params.id) });
+    res.json({ success: true });
 });
 
-// Cash Movements (Cashier-based)
-app.post('/api/cash-movement', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { type, amount, reason, cashier_id, cashier_name } = req.body;
-    let finalCashierId = req.user?.id || 0;
-    let finalCashierName = req.user?.username || 'Unknown';
-    
-    if (req.user?.role === 'admin' && cashier_id !== undefined) {
-        finalCashierId = cashier_id;
-        finalCashierName = cashier_name || 'Admin';
-    }
-
-    db.run('INSERT INTO cash_movements (type, amount, reason, cashier_id, cashier_name) VALUES (?, ?, ?, ?, ?)', 
-        [type, amount, reason, finalCashierId, finalCashierName], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, id: this.lastID });
-    });
+app.post('/api/cash-movement', requireRoles(['admin', 'cashier']), async (req, res) => {
+    const data = { ...req.body };
+    data.cashier_id = req.user?.role === 'admin' ? (req.body.cashier_id || req.user.id) : req.user?.id || 0;
+    data.cashier_name = req.user?.role === 'admin' ? (req.body.cashier_name || 'Admin') : req.user?.username || 'Unknown';
+    const mov = await CashMovement.create(data);
+    res.json({ success: true, id: mov.id });
 });
 
-app.get('/api/movements/recent', requireRoles(['admin', 'cashier']), (req, res) => {
-    const cashierId = req.user?.id || 0;
-    const role      = req.user?.role || 'cashier';
-    const query = role === 'admin'
-        ? 'SELECT * FROM cash_movements ORDER BY id DESC LIMIT 50'
-        : 'SELECT * FROM cash_movements WHERE cashier_id = ? ORDER BY id DESC LIMIT 50';
-    const params = role === 'admin' ? [] : [cashierId];
-    
-    db.all(query, params, (err, movs) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(movs || []);
-    });
+app.get('/api/movements/recent', requireRoles(['admin', 'cashier']), async (req, res) => {
+    const query = req.user?.role === 'admin' ? {} : { cashier_id: req.user?.id || 0 };
+    res.json(await CashMovement.find(query).sort({ _id: -1 }).limit(50));
 });
 
-// Orders (POS)
-app.post('/api/orders', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { status, total, payment_method, discount_amount, service_charge, notes, items, order_type } = req.body;
-    const cashierName = req.user?.username || 'Unknown';
-    const cashierId   = req.user?.id || 0;
-    
-    db.run('INSERT INTO orders (status, total, payment_method, discount_amount, notes, cashier_id, cashier_name, order_type, service_charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', 
-        [status || 'open', total, payment_method, discount_amount || 0, notes, cashierId, cashierName, order_type || 'Takeaway', service_charge || 0], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        const orderId = this.lastID;
-        
-        if (items && items.length > 0) {
-            const stmt = db.prepare('INSERT INTO order_items (order_id, item_id, name, price, qty, notes) VALUES (?, ?, ?, ?, ?, ?)');
-            items.forEach(item => {
-                stmt.run(orderId, item.item_id, item.name, item.price, item.qty, item.notes);
-            });
-            stmt.finalize();
-        }
-        res.json({ success: true, order_id: orderId });
-    });
+app.post('/api/orders', requireRoles(['admin', 'cashier']), async (req, res) => {
+    const data = { ...req.body, cashier_id: req.user?.id || 0, cashier_name: req.user?.username || 'Unknown' };
+    try {
+        const order = await Order.create(data);
+        res.json({ success: true, order_id: order.id });
+    } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// Update Order (for Multi-cart sync & updates)
-app.put('/api/orders/:id', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { status, total, payment_method, discount_amount, service_charge, notes, items, order_type } = req.body;
-    db.run('UPDATE orders SET status = ?, total = ?, payment_method = COALESCE(?, payment_method), discount_amount = ?, notes = ?, order_type = ?, service_charge = ? WHERE id = ?', 
-        [status, total, payment_method, discount_amount, notes, order_type, service_charge || 0, req.params.id], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        // Re-write items
-        db.run('DELETE FROM order_items WHERE order_id = ?', [req.params.id], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            if (items && items.length > 0) {
-                const stmt = db.prepare('INSERT INTO order_items (order_id, item_id, name, price, qty, notes) VALUES (?, ?, ?, ?, ?, ?)');
-                items.forEach(item => stmt.run(req.params.id, item.item_id, item.name, item.price, item.qty, item.notes));
-                stmt.finalize();
-            }
-            res.json({ success: true });
-        });
-    });
+app.put('/api/orders/:id', requireRoles(['admin', 'cashier']), async (req, res) => {
+    await Order.updateOne({ id: parseInt(req.params.id) }, req.body);
+    res.json({ success: true });
 });
 
-app.get('/api/orders/active', requireRoles(['admin', 'cashier']), (req, res) => {
-    db.all('SELECT * FROM orders WHERE status IN ("open", "held") ORDER BY id DESC', [], (err, orders) => {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        db.all('SELECT * FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE status IN ("open", "held"))', [], (err, items) => {
-            if (err) return res.status(500).json({ error: err.message });
-            
-            const ordersWithItems = orders.map(o => ({
-                ...o,
-                items: items.filter(i => i.order_id === o.id)
-            }));
-            res.json(ordersWithItems);
-        });
-    });
+app.get('/api/orders/active', requireRoles(['admin', 'cashier']), async (req, res) => {
+    res.json(await Order.find({ status: { $in: ['open', 'held'] } }).sort({ _id: -1 }));
 });
 
-app.put('/api/orders/:id/status', requireRoles(['admin', 'cashier']), (req, res) => {
-    const { status, payment_method } = req.body;
-    db.run('UPDATE orders SET status = ?, payment_method = COALESCE(?, payment_method) WHERE id = ?', [status, payment_method, req.params.id], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
+app.put('/api/orders/:id/status', requireRoles(['admin', 'cashier']), async (req, res) => {
+    await Order.updateOne({ id: parseInt(req.params.id) }, req.body);
+    res.json({ success: true });
 });
 
-// Reports endpoint — period: daily | weekly | monthly | annual (Shiftless)
-app.get('/api/reports', requireRoles(['admin']), (req, res) => {
+app.get('/api/reports', requireRoles(['admin']), async (req, res) => {
     const period = req.query.period || 'daily';
     const customHours = parseInt(req.query.hours);
     const cashierId = parseInt(req.query.cashier_id);
+    let dateFilter = new Date();
+    
+    if (customHours) dateFilter.setHours(dateFilter.getHours() - customHours);
+    else if (period === 'weekly') dateFilter.setDate(dateFilter.getDate() - 7);
+    else if (period === 'monthly') dateFilter.setMonth(dateFilter.getMonth() - 1);
+    else if (period === 'annual') dateFilter.setFullYear(dateFilter.getFullYear() - 1);
+    else dateFilter.setHours(0,0,0,0); // start of day
 
-    let dateFilter;
-    if (customHours && !isNaN(customHours)) {
-        dateFilter = `datetime('now', '-${customHours} hours')`;
-    } else {
-        switch(period) {
-            case 'weekly':  dateFilter = "datetime('now', '-7 days')"; break;
-            case 'monthly': dateFilter = "datetime('now', '-1 month')"; break;
-            case 'annual':  dateFilter = "datetime('now', '-1 year')"; break;
-            default:        dateFilter = "datetime('now', 'start of day')";
+    const query = { status: 'paid', created_at: { $gte: dateFilter } };
+    if (cashierId) query.cashier_id = cashierId;
+
+    const orders = await Order.find(query).lean();
+    
+    const summary = {
+        totalOrders: orders.length,
+        totalSales: orders.reduce((s,o)=>s+o.total,0),
+        cashSales: orders.filter(o=>o.payment_method==='Cash').reduce((s,o)=>s+o.total,0),
+        cardSales: orders.filter(o=>o.payment_method==='Card').reduce((s,o)=>s+o.total,0)
+    };
+
+    const byCashierMap = {};
+    orders.forEach(o => {
+        if (!byCashierMap[o.cashier_name]) {
+            byCashierMap[o.cashier_name] = { cashier_name: o.cashier_name, cashier_id: o.cashier_id, orderCount: 0, totalSales: 0, cashSales: 0, cardSales: 0 };
         }
-    }
-
-    let baseWhere = `WHERE status = 'paid' AND created_at >= ${dateFilter}`;
-    if (cashierId && !isNaN(cashierId)) {
-        baseWhere += ` AND cashier_id = ${cashierId}`;
-    }
-
-    db.get(`SELECT COUNT(*) as totalOrders, COALESCE(SUM(total),0) as totalSales,
-            COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
-            COALESCE(SUM(CASE WHEN payment_method='Card' THEN total ELSE 0 END),0) as cardSales
-            FROM orders ${baseWhere}`, [], (err, summary) => {
-        if (err) return res.status(500).json({ error: err.message });
-
-        db.all(`SELECT cashier_name, cashier_id,
-                COUNT(*) as orderCount,
-                COALESCE(SUM(total),0) as totalSales,
-                COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
-                COALESCE(SUM(CASE WHEN payment_method='Card' THEN total ELSE 0 END),0) as cardSales
-                FROM orders ${baseWhere}
-                GROUP BY cashier_name ORDER BY totalSales DESC`, [], (err, byCashier) => {
-            if (err) return res.status(500).json({ error: err.message });
-
-            db.all(`SELECT o.id, o.created_at, o.total, o.payment_method, o.cashier_name, o.discount_amount,
-                    o.service_charge, o.order_type, GROUP_CONCAT(oi.qty || 'x ' || oi.name, ', ') as itemsSummary
-                    FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id
-                    ${baseWhere} GROUP BY o.id ORDER BY o.id DESC LIMIT 200`, [], (err, orders) => {
-                if (err) return res.status(500).json({ error: err.message });
-
-                let movWhere = `WHERE created_at >= ${dateFilter}`;
-                if (cashierId && !isNaN(cashierId)) {
-                    movWhere += ` AND cashier_id = ${cashierId}`;
-                }
-
-                db.all(`SELECT * FROM cash_movements ${movWhere} ORDER BY id DESC`, [], (err, movements) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    const totalIn = movements.filter(m => m.type === 'in').reduce((s, m) => s + m.amount, 0);
-                    const totalOut = movements.filter(m => m.type === 'out').reduce((s, m) => s + m.amount, 0);
-
-                    res.json({ period, summary, byCashier, orders, movements, totalIn, totalOut });
-                });
-            });
-        });
+        const b = byCashierMap[o.cashier_name];
+        b.orderCount++; b.totalSales += o.total;
+        if (o.payment_method === 'Cash') b.cashSales += o.total;
+        if (o.payment_method === 'Card') b.cardSales += o.total;
     });
+    const byCashier = Object.values(byCashierMap).sort((a,b)=>b.totalSales - a.totalSales);
+
+    // Recent 200 orders formatted
+    const recentOrders = orders.slice(-200).reverse().map(o => ({
+        id: o.id, created_at: o.created_at, total: o.total, payment_method: o.payment_method,
+        cashier_name: o.cashier_name, discount_amount: o.discount_amount, service_charge: o.service_charge,
+        order_type: o.order_type, itemsSummary: o.items.map(i => `${i.qty}x ${i.name}`).join(', ')
+    }));
+
+    const movQuery = { created_at: { $gte: dateFilter } };
+    if (cashierId) movQuery.cashier_id = cashierId;
+    const movements = await CashMovement.find(movQuery).sort({ _id: -1 }).lean();
+    
+    const totalIn = movements.filter(m=>m.type==='in').reduce((s,m)=>s+m.amount,0);
+    const totalOut = movements.filter(m=>m.type==='out').reduce((s,m)=>s+m.amount,0);
+
+    res.json({ period, summary, byCashier, orders: recentOrders, movements, totalIn, totalOut });
 });
 
-
-// Cashier daily stats (today's performance for logged-in cashier)
-app.get('/api/cashier/stats', requireRoles(['admin', 'cashier']), (req, res) => {
+app.get('/api/cashier/stats', requireRoles(['admin', 'cashier']), async (req, res) => {
     const cashierId = req.user?.id || 0;
-    const startOfDay = "datetime('now', 'start of day')";
+    const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+    
+    const lastHandover = await CashMovement.findOne({ cashier_id: cashierId, reason: /تسليم عهدة/, created_at: { $gte: startOfDay } }).sort({ _id: -1 });
+    const startTime = lastHandover ? lastHandover.created_at : startOfDay;
 
-    // Find the last handover time for this cashier today
-    db.get(`SELECT MAX(created_at) as last_handover FROM cash_movements 
-            WHERE cashier_id = ? AND reason LIKE '%تسليم عهدة%' AND created_at >= ${startOfDay}`, [cashierId], (err, mov) => {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        // If there is a handover today, only count stats AFTER that handover
-        let startTime = startOfDay;
-        if (mov && mov.last_handover) {
-            startTime = `'${mov.last_handover}'`;
-        }
+    const orders = await Order.find({ cashier_id: cashierId, created_at: { $gte: startTime } });
+    const movs = await CashMovement.find({ cashier_id: cashierId, created_at: { $gte: startTime } });
 
-        db.get(`SELECT
-            COUNT(*) as totalOrders,
-            COALESCE(SUM(CASE WHEN status='paid' THEN total ELSE 0 END),0) as totalSales,
-            COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Cash' THEN total ELSE 0 END),0) as cashSales,
-            COALESCE(SUM(CASE WHEN status='paid' AND payment_method='Card' THEN total ELSE 0 END),0) as cardSales,
-            COUNT(CASE WHEN status='paid' THEN 1 END) as paidOrders
-            FROM orders WHERE cashier_id = ? AND created_at >= ${startTime}`,
-            [cashierId], (err, stats) => {
-            if (err) return res.status(500).json({ error: err.message });
-            
-            db.get(`SELECT 
-                COALESCE(SUM(CASE WHEN type='in' THEN amount ELSE 0 END),0) as cashIn,
-                COALESCE(SUM(CASE WHEN type='out' AND reason NOT LIKE '%تسليم عهدة%' THEN amount ELSE 0 END),0) as cashOut
-                FROM cash_movements WHERE cashier_id = ? AND created_at >= ${startTime}`,
-                [cashierId], (err, movStats) => {
-                if (err) return res.status(500).json({ error: err.message });
-                stats.cashIn = movStats.cashIn;
-                stats.cashOut = movStats.cashOut;
-                res.json({ success: true, stats });
-            });
-        });
-    });
+    const stats = {
+        totalOrders: orders.length,
+        totalSales: orders.filter(o=>o.status==='paid').reduce((s,o)=>s+o.total,0),
+        cashSales: orders.filter(o=>o.status==='paid'&&o.payment_method==='Cash').reduce((s,o)=>s+o.total,0),
+        cardSales: orders.filter(o=>o.status==='paid'&&o.payment_method==='Card').reduce((s,o)=>s+o.total,0),
+        paidOrders: orders.filter(o=>o.status==='paid').length,
+        cashIn: movs.filter(m=>m.type==='in').reduce((s,m)=>s+m.amount,0),
+        cashOut: movs.filter(m=>m.type==='out' && !m.reason.includes('تسليم عهدة')).reduce((s,m)=>s+m.amount,0)
+    };
+    res.json({ success: true, stats });
 });
 
-// ===================== HTML ROUTES =====================
-app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
-app.get('/cashier.html', (req, res) => res.sendFile(path.join(__dirname, 'cashier.html')));
-app.get('/cashier', (req, res) => res.sendFile(path.join(__dirname, 'cashier.html')));
-app.get('/admin-dashboard.html', (req, res) => res.sendFile(path.join(__dirname, 'admin-dashboard.html')));
-app.get('/admin-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'admin-dashboard.html')));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+// Frontend Routes
+const serveHtml = (file) => (req, res) => res.sendFile(path.join(__dirname, file));
+app.get('/admin.html', serveHtml('admin.html'));
+app.get('/cashier.html', serveHtml('cashier.html'));
+app.get('/cashier', serveHtml('cashier.html'));
+app.get('/admin-dashboard.html', serveHtml('admin-dashboard.html'));
+app.get('/admin-dashboard', serveHtml('admin-dashboard.html'));
+app.get('/', serveHtml('index.html'));
+app.get('/index.html', serveHtml('index.html'));
+app.get('/login.html', serveHtml('login.html'));
 
-app.listen(port, () => console.log(`Coffee Duck Server running at http://localhost:${port}`));
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(port, () => console.log(`Server running at http://localhost:${port}`));
+}
+module.exports = app;
