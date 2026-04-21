@@ -57,7 +57,7 @@ function requireRoles(roles) {
 // ===================== MONGODB DATABASE =====================
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/coffee-duck';
 
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(MONGO_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
